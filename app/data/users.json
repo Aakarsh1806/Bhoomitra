@@ -1,0 +1,52 @@
+[
+  {
+    "id": "1",
+    "name": "Admin User",
+    "email": "admin@manapolam.ai",
+    "password": "password123",
+    "role": "admin",
+    "status": "active",
+    "lastLogin": "2026-02-27T08:30:00.000Z",
+    "phone": "+91 9876543210",
+    "location": "Central Farm Hub",
+    "permissions": [
+      "all"
+    ],
+    "createdAt": "2026-01-01"
+  },
+  {
+    "id": "2",
+    "name": "Field Manager",
+    "email": "manager@manapolam.ai",
+    "password": "password123",
+    "role": "manager",
+    "status": "active",
+    "lastLogin": "2026-02-27T09:15:00.000Z",
+    "phone": "+91 9876543211",
+    "location": "North Sector",
+    "permissions": [
+      "dashboard",
+      "map",
+      "spraying",
+      "analytics",
+      "recommendations"
+    ],
+    "createdAt": "2026-01-15"
+  },
+  {
+    "name": "Sai Vallabha Linga",
+    "email": "saivallabhalinga@gmail.com",
+    "role": "operator",
+    "phone": "6301583992",
+    "location": "Hyderabad",
+    "status": "active",
+    "lastLogin": "Never",
+    "permissions": [
+      "dashboard",
+      "map",
+      "spraying"
+    ],
+    "id": "4jwux8cvm",
+    "createdAt": "2026-02-27"
+  }
+]

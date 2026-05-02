@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 180" role="img" aria-labelledby="title desc">
+  <title id="title">Bhoomitra logo</title>
+  <desc id="desc">Wordmark for Bhoomitra with a small sprout icon.</desc>
+  <rect width="760" height="180" fill="none"/>
+  <g fill="#0ea35f" font-family="Poppins, Nunito, Segoe UI, Arial, sans-serif" font-weight="500" font-size="104" letter-spacing="1">
+    <text x="20" y="122">bhoomi</text>
+    <text x="430" y="122">tra</text>
+  </g>
+
+  <g transform="translate(366,20)">
+    <rect x="20" y="62" width="8" height="52" rx="4" fill="#0ea35f"/>
+    <ellipse cx="24" cy="117" rx="22" ry="5" fill="#7a5f48"/>
+
+    <ellipse cx="7" cy="54" rx="20" ry="11" transform="rotate(-34 7 54)" fill="#13b868"/>
+    <ellipse cx="42" cy="51" rx="20" ry="11" transform="rotate(34 42 51)" fill="#13b868"/>
+    <path d="M -8 54 C -2 45, 4 43, 18 44" stroke="#0c8f52" stroke-width="2" fill="none"/>
+    <path d="M 58 54 C 52 45, 46 43, 32 44" stroke="#0c8f52" stroke-width="2" fill="none"/>
+  </g>
+
+  <line x1="28" y1="134" x2="730" y2="134" stroke="#7a5f48" stroke-width="2" stroke-linecap="round" opacity="0.8"/>
+</svg>

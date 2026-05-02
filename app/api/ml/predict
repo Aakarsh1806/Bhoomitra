@@ -1,0 +1,9 @@
+{
+  "disease": "Tomato___Late_Blight",
+  "confidence": 0.962,
+  "top3": [
+    {"class": "...", "prob": 0.962},
+    {"class": "...", "prob": 0.021},
+    {"class": "...", "prob": 0.008}
+  ]
+}

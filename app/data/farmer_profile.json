@@ -1,0 +1,31 @@
+{
+  "farmerName": "gyyg",
+  "village": "yh8gb",
+  "district": "nhuumj",
+  "acres": 2,
+  "totalFarmAreaAcres": 2,
+  "primaryCrop": "Paddy",
+  "zones": 12,
+  "zoneCount": 12,
+  "zoneNames": {
+    "A1": "A1",
+    "A2": "A2",
+    "A3": "A3",
+    "A4": "A4",
+    "A5": "A5",
+    "A6": "A6",
+    "B1": "B1",
+    "B2": "B2",
+    "B3": "B3",
+    "B4": "B4",
+    "B5": "B5",
+    "B6": "B6"
+  },
+  "sensorAssignments": {
+    "sensor1": "A1",
+    "sensor2": "A2",
+    "sensor3": "A3"
+  },
+  "createdAt": "2026-04-06T07:43:18.222Z",
+  "updatedAt": "2026-04-06T07:43:18.222Z"
+}
