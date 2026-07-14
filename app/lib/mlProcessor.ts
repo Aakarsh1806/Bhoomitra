@@ -1,8 +1,37 @@
 import { pesticideDatabase } from "@/app/data/pesticideDatabase"
 
-export async function runMLPrediction(file: File) {
+export type MLPredictionOptions = {
+  modelId?: string
+  crop?: string
+  language?: string
+}
+
+export function normalizeDiseaseLabel(disease: string) {
+  const rawValue = Array.isArray(disease) ? disease.join(" ") : disease || ""
+
+  return rawValue
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/-+/g, "_")
+    .replace(/__+/g, "_")
+    .trim()
+}
+
+export async function runMLPrediction(file: File, options: MLPredictionOptions = {}) {
   const formData = new FormData()
   formData.append("file", file)
+
+  if (options.modelId) {
+    formData.append("modelId", options.modelId)
+  }
+
+  if (options.crop) {
+    formData.append("crop", options.crop)
+  }
+
+  if (options.language) {
+    formData.append("language", options.language)
+  }
 
   const response = await fetch("http://127.0.0.1:5000/predict", {
     method: "POST",
@@ -17,7 +46,7 @@ export function calculateSeverity(
   confidence: number,
   disease?: string,
 ): { level: "low" | "moderate" | "high"; score: number } {
-  const normalizedDisease = (disease || "").toLowerCase()
+  const normalizedDisease = normalizeDiseaseLabel(disease || "")
   if (normalizedDisease.includes("healthy")) {
     return { level: "low", score: 0 }
   }
@@ -28,13 +57,15 @@ export function calculateSeverity(
 }
 
 export function getTreatmentOptions(disease: string) {
+  const normalizedDisease = normalizeDiseaseLabel(disease)
+
   const chemicals = pesticideDatabase.filter(p =>
-    p.type !== "Organic" && p.approvedFor.includes(disease)
+    p.type !== "Organic" && p.approvedFor.some(approvedFor => normalizeDiseaseLabel(approvedFor).includes(normalizedDisease))
   )
 
   const organicEntries = pesticideDatabase.filter(p =>
     p.type === "Organic" && 
-    (p.approvedFor.includes(disease) || p.approvedFor.includes("Any___Healthy"))
+    (p.approvedFor.some(approvedFor => normalizeDiseaseLabel(approvedFor).includes(normalizedDisease)) || p.approvedFor.some(approvedFor => normalizeDiseaseLabel(approvedFor).includes("any_healthy")))
   )
 
   const organic = organicEntries.length > 0 

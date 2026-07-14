@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { zones, pendingCommands, updateHardwareState, recordActivity } from "../zones/data"
 import { DetectionEvent } from "../zones/types"
-import { calculateSeverity, getTreatmentOptions } from "@/app/lib/mlProcessor"
+import { calculateSeverity, getTreatmentOptions, normalizeDiseaseLabel } from "@/app/lib/mlProcessor"
 import { readDB, writeDB } from "@/app/lib/database"
 
 export async function POST(req: Request) {
@@ -10,6 +10,9 @@ export async function POST(req: Request) {
 
     const zoneId = formData.get("zoneId") as string
     const file = formData.get("file") as File
+    const modelId = (formData.get("modelId") as string) || undefined
+    const crop = (formData.get("crop") as string) || (formData.get("cropType") as string) || undefined
+    const language = (formData.get("language") as string) || undefined
 
     if (!zoneId || !file) {
       return NextResponse.json(
@@ -21,6 +24,18 @@ export async function POST(req: Request) {
     // Send image to Flask ML server
     const flaskForm = new FormData()
     flaskForm.append("file", file)
+
+    if (modelId) {
+      flaskForm.append("modelId", modelId)
+    }
+
+    if (crop) {
+      flaskForm.append("crop", crop)
+    }
+
+    if (language) {
+      flaskForm.append("language", language)
+    }
 
     const flaskRes = await fetch("http://127.0.0.1:5000/predict", {
       method: "POST",
@@ -37,7 +52,10 @@ export async function POST(req: Request) {
     const mlResult = await flaskRes.json()
 
     const disease = mlResult?.disease ?? "Unknown"
+    const canonicalDisease = mlResult?.canonicalDisease ?? mlResult?.englishDisease ?? disease
     const confidence = mlResult?.confidence ?? 0
+    const selectedModelId = mlResult?.modelId ?? modelId ?? null
+    const selectedModelVersion = mlResult?.modelVersion ?? null
 
     const zone = zones.find(z => z.id === zoneId)
     if (!zone) {
@@ -47,13 +65,13 @@ export async function POST(req: Request) {
       )
     }
 
-    const isHealthyPrediction = disease.toLowerCase().includes("healthy")
+    const isHealthyPrediction = normalizeDiseaseLabel(canonicalDisease).includes("healthy")
 
     // 🔥 Severity calculation (healthy must stay low)
-    const { level, score } = calculateSeverity(confidence, disease)
+    const { level, score } = calculateSeverity(confidence, canonicalDisease)
 
     // 🔥 Treatment lookup
-    const treatments = getTreatmentOptions(disease)
+    const treatments = getTreatmentOptions(canonicalDisease)
     const primaryChemical = treatments.chemicals?.[0]
 
     // 🔥 Create detection object
@@ -61,6 +79,7 @@ export async function POST(req: Request) {
       id: crypto.randomUUID(),
       zoneId,
       disease,
+      canonicalDisease,
       confidence,
       severityLevel: level,
       severityScore: score,
@@ -76,6 +95,8 @@ export async function POST(req: Request) {
       treatedAt: null,
       postSeverityScore: null,
       linkedSprayId: null,
+      modelId: selectedModelId,
+      modelVersion: selectedModelVersion,
 
     }
 
@@ -138,6 +159,9 @@ export async function POST(req: Request) {
     zone.severityScore = score
     zone.lastAnalyzed = new Date().toISOString()
     zone.status = isHealthyPrediction ? "healthy" : level === "high" ? "critical" : level === "moderate" ? "warning" : zone.status
+    zone.canonicalDisease = canonicalDisease
+    zone.mlModelId = selectedModelId ?? undefined
+    zone.mlModelVersion = selectedModelVersion ?? undefined
 
     if (!zone.treatmentHistory) zone.treatmentHistory = []
     zone.treatmentHistory.push(newDetection)
@@ -145,6 +169,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       detection: newDetection,
+      modelId: selectedModelId,
+      modelVersion: selectedModelVersion,
     })
 
   } catch (err) {

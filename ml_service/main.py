@@ -6,9 +6,12 @@ from tensorflow.keras.applications.mobilenet_v2 import preprocess_input
 from PIL import Image
 
 import os
+import json
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(BASE_DIR, "mobilenetv2_best.keras")
+MODEL_REGISTRY_PATH = os.path.join(BASE_DIR, "model_registry.json")
+DEFAULT_MODEL_ID = "plant_disease_mobilenet_v2"
 
 class_names = [
     'Apple___Apple_scab', 'Apple___Black_rot', 'Apple___Cedar_apple_rust', 'Apple___healthy',
@@ -49,12 +52,217 @@ translations = {
     'Tomato_mosaic_virus': {'en': 'Tomato Mosaic Virus', 'hi': 'टमाटर मोजैक वायरस', 'mr': 'टमाटर मोजॅक व्हायरस', 'ta': 'தக்காளி பதுமை வைரஸ்', 'te': 'టమోటా చిత్ర వైరస్'},
 }
 
+DEFAULT_MODEL_REGISTRY = {
+    "default_model_id": DEFAULT_MODEL_ID,
+    "models": [
+        {
+            "model_id": DEFAULT_MODEL_ID,
+            "display_name": "Plant Disease MobileNetV2",
+            "model_path": "mobilenetv2_best.keras",
+            "model_version": "1.0.0",
+            "enabled": True,
+            "input_size": 224,
+            "preprocess": "mobilenet_v2",
+            "crop_tags": ["general", "plant", "leaf"],
+            "class_names_source": "default"
+        },
+        {
+            "model_id": "tomato_disease_v1",
+            "display_name": "Tomato Disease Detector",
+            "model_path": "models/tomato_disease_v1.keras",
+            "model_version": "0.1.0",
+            "enabled": False,
+            "input_size": 224,
+            "preprocess": "mobilenet_v2",
+            "crop_tags": ["tomato"],
+            "class_names_path": "models/tomato_disease_labels.json"
+        },
+        {
+            "model_id": "corn_disease_v1",
+            "display_name": "Corn Disease Detector",
+            "model_path": "models/corn_disease_v1.keras",
+            "model_version": "0.1.0",
+            "enabled": False,
+            "input_size": 224,
+            "preprocess": "mobilenet_v2",
+            "crop_tags": ["corn", "maize"],
+            "class_names_path": "models/corn_disease_labels.json"
+        }
+    ]
+}
+
+
+def load_model_registry():
+    if os.path.exists(MODEL_REGISTRY_PATH):
+        try:
+            with open(MODEL_REGISTRY_PATH, "r", encoding="utf-8") as handle:
+                parsed = json.load(handle)
+                if isinstance(parsed, dict) and isinstance(parsed.get("models"), list):
+                    return parsed
+        except Exception:
+            pass
+
+    return DEFAULT_MODEL_REGISTRY
+
+
+def normalize_entry(entry):
+    normalized = dict(entry)
+    normalized["model_id"] = str(normalized.get("model_id", "")).strip()
+    normalized["display_name"] = str(normalized.get("display_name", normalized["model_id"]))
+    normalized["model_path"] = str(normalized.get("model_path", "")).strip()
+    normalized["model_version"] = str(normalized.get("model_version", "1.0.0"))
+    normalized["enabled"] = bool(normalized.get("enabled", True))
+    normalized["input_size"] = int(normalized.get("input_size", 224))
+    normalized["preprocess"] = str(normalized.get("preprocess", "mobilenet_v2"))
+    normalized["crop_tags"] = [
+        str(tag).lower().strip()
+        for tag in normalized.get("crop_tags", [])
+        if str(tag).strip()
+    ]
+
+    if isinstance(normalized.get("class_names"), list):
+        normalized["class_names"] = [str(item) for item in normalized["class_names"] if str(item).strip()]
+
+    if normalized.get("class_names_path"):
+        normalized["class_names_path"] = str(normalized["class_names_path"])
+
+    return normalized
+
+
+def resolve_path(relative_or_absolute_path):
+    if not relative_or_absolute_path:
+        return None
+    if os.path.isabs(relative_or_absolute_path):
+        return relative_or_absolute_path
+    return os.path.join(BASE_DIR, relative_or_absolute_path)
+
+
+def load_class_names_for_model(config):
+    if isinstance(config.get("class_names"), list) and config["class_names"]:
+        return config["class_names"]
+
+    if config.get("class_names_source") == "default" or config.get("model_id") == DEFAULT_MODEL_ID:
+        return class_names
+
+    class_names_path = resolve_path(config.get("class_names_path"))
+    if class_names_path and os.path.exists(class_names_path):
+        try:
+            with open(class_names_path, "r", encoding="utf-8") as handle:
+                parsed = json.load(handle)
+                if isinstance(parsed, list) and parsed:
+                    return [str(item) for item in parsed if str(item).strip()]
+        except Exception:
+            pass
+
+    raise ValueError(
+        f'Model "{config.get("model_id")}" does not define class names. Add class_names or class_names_path to the registry.'
+    )
+
+
+def apply_preprocess(img_array, preprocess_name):
+    if preprocess_name == "mobilenet_v2":
+        return preprocess_input(img_array)
+    if preprocess_name == "rescale_1_255":
+        return img_array.astype("float32") / 255.0
+    return img_array
+
+
+def load_model_registry_index():
+    registry = load_model_registry()
+    models = {}
+
+    for entry in registry.get("models", []):
+        normalized = normalize_entry(entry)
+        model_id = normalized.get("model_id")
+        if model_id:
+            models[model_id] = normalized
+
+    return registry, models
+
+
+MODEL_REGISTRY, MODEL_INDEX = load_model_registry_index()
+MODEL_CACHE = {}
+
 app = Flask(__name__)
 CORS(app)
 
-model = tf.keras.models.load_model(MODEL_PATH)
 
-IMG_SIZE = 224
+def get_default_model_id():
+    default_model_id = MODEL_REGISTRY.get("default_model_id")
+    if default_model_id in MODEL_INDEX:
+        return default_model_id
+
+    for model_id, config in MODEL_INDEX.items():
+        if config.get("enabled", True):
+            return model_id
+
+    return next(iter(MODEL_INDEX), None)
+
+
+def resolve_model_config(requested_model_id=None, crop_hint=None):
+    requested_model_id = str(requested_model_id).strip() if requested_model_id else ""
+    crop_hint = str(crop_hint).strip().lower() if crop_hint else ""
+
+    if requested_model_id:
+        if requested_model_id not in MODEL_INDEX:
+            available_models = [model_id for model_id, config in MODEL_INDEX.items() if config.get("enabled", True)]
+            raise KeyError(f'Model "{requested_model_id}" is not registered. Available models: {", ".join(available_models) or "none"}')
+
+        selected_model = MODEL_INDEX[requested_model_id]
+        if not selected_model.get("enabled", True):
+            raise ValueError(f'Model "{requested_model_id}" is registered but disabled.')
+
+        return selected_model
+
+    if crop_hint:
+        for config in MODEL_INDEX.values():
+            if not config.get("enabled", True):
+                continue
+
+            crop_tags = config.get("crop_tags", [])
+            if crop_hint in crop_tags or any(crop_hint in tag or tag in crop_hint for tag in crop_tags):
+                return config
+
+    default_model_id = get_default_model_id()
+    if default_model_id:
+        selected_model = MODEL_INDEX.get(default_model_id)
+        if selected_model and selected_model.get("enabled", True):
+            return selected_model
+
+    for config in MODEL_INDEX.values():
+        if config.get("enabled", True):
+            return config
+
+    raise RuntimeError("No enabled ML models are available in the registry.")
+
+
+def load_model_for_config(config):
+    model_id = config["model_id"]
+    if model_id in MODEL_CACHE:
+        return MODEL_CACHE[model_id]
+
+    model_path = resolve_path(config.get("model_path"))
+    if not model_path or not os.path.exists(model_path):
+        raise FileNotFoundError(f'Model file not found for "{model_id}": {model_path}')
+
+    loaded_model = tf.keras.models.load_model(model_path)
+    MODEL_CACHE[model_id] = loaded_model
+    return loaded_model
+
+
+def extract_top_predictions(predictions, class_names_for_model, language):
+    top_count = min(3, len(predictions), len(class_names_for_model))
+    top_indices = predictions.argsort()[-top_count:][::-1]
+
+    return [
+        {
+            "disease": get_translated_name(extract_disease_key(class_names_for_model[int(index)]), language),
+            "englishDisease": extract_disease_key(class_names_for_model[int(index)]),
+            "canonicalDisease": extract_disease_key(class_names_for_model[int(index)]),
+            "probability": float(predictions[index])
+        }
+        for index in top_indices
+    ]
 
 def extract_disease_key(class_name):
     """Extract disease key from class name format 'Plant___Disease'"""
@@ -80,44 +288,85 @@ def get_translated_name(english_disease, language='en'):
     # Fallback: return English name
     return english_disease
 
+
+@app.route("/models", methods=["GET"])
+def get_models():
+    models = [
+        {
+            "modelId": config.get("model_id"),
+            "displayName": config.get("display_name"),
+            "modelVersion": config.get("model_version"),
+            "enabled": config.get("enabled", True),
+            "inputSize": config.get("input_size", 224),
+            "preprocess": config.get("preprocess", "mobilenet_v2"),
+            "cropTags": config.get("crop_tags", []),
+        }
+        for config in MODEL_INDEX.values()
+    ]
+
+    return jsonify({
+        "defaultModelId": get_default_model_id(),
+        "models": models,
+    })
+
 @app.route("/predict", methods=["POST"])
 def predict():
-    file = request.files["file"]
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"error": "Missing image file"}), 400
+
     language = request.form.get('language', 'en').lower()
-    
+    requested_model_id = request.form.get("modelId") or request.form.get("model_id")
+    crop_hint = request.form.get("crop") or request.form.get("cropType") or request.form.get("cropHint")
+
     # Validate language
     if language not in ['en', 'hi', 'mr', 'ta', 'te']:
         language = 'en'
 
+    try:
+        selected_model = resolve_model_config(requested_model_id, crop_hint)
+    except KeyError as err:
+        return jsonify({"error": str(err), "availableModels": list(MODEL_INDEX.keys())}), 404
+    except ValueError as err:
+        return jsonify({"error": str(err)}), 409
+
+    try:
+        model = load_model_for_config(selected_model)
+        class_names_for_model = load_class_names_for_model(selected_model)
+    except (FileNotFoundError, ValueError) as err:
+        return jsonify({"error": str(err), "modelId": selected_model.get("model_id")}), 500
+
     img = Image.open(file.stream).convert("RGB")
-    img = img.resize((IMG_SIZE, IMG_SIZE))
+    img_size = int(selected_model.get("input_size", 224))
+    img = img.resize((img_size, img_size))
 
     img_array = np.array(img)
     img_array = np.expand_dims(img_array, axis=0)
-    img_array = preprocess_input(img_array)
+    img_array = apply_preprocess(img_array, selected_model.get("preprocess", "mobilenet_v2"))
 
     predictions = model.predict(img_array)[0]
 
     predicted_index = int(np.argmax(predictions))
-    predicted_disease_raw = class_names[predicted_index]
+    if predicted_index >= len(class_names_for_model):
+        return jsonify({
+            "error": "Model output size does not match the configured class names.",
+            "modelId": selected_model.get("model_id")
+        }), 500
+
+    predicted_disease_raw = class_names_for_model[predicted_index]
     disease_key = extract_disease_key(predicted_disease_raw)
     predicted_disease = get_translated_name(disease_key, language)
     confidence = float(predictions[predicted_index])
 
-    top3_indices = predictions.argsort()[-3:][::-1]
-
-    top3 = [
-        {
-            "disease": get_translated_name(extract_disease_key(class_names[int(i)]), language),
-            "englishDisease": extract_disease_key(class_names[int(i)]),
-            "probability": float(predictions[i])
-        }
-        for i in top3_indices
-    ]
+    top3 = extract_top_predictions(predictions, class_names_for_model, language)
 
     return jsonify({
+        "modelId": selected_model.get("model_id"),
+        "modelVersion": selected_model.get("model_version"),
+        "modelName": selected_model.get("display_name"),
         "disease": predicted_disease,
         "englishDisease": disease_key,
+        "canonicalDisease": disease_key,
         "confidence": confidence,
         "language": language,
         "top3": top3

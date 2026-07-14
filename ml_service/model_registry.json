@@ -1,0 +1,38 @@
+{
+  "default_model_id": "plant_disease_mobilenet_v2",
+  "models": [
+    {
+      "model_id": "plant_disease_mobilenet_v2",
+      "display_name": "Plant Disease MobileNetV2",
+      "model_path": "mobilenetv2_best.keras",
+      "model_version": "1.0.0",
+      "enabled": true,
+      "input_size": 224,
+      "preprocess": "mobilenet_v2",
+      "crop_tags": ["general", "plant", "leaf"],
+      "class_names_source": "default"
+    },
+    {
+      "model_id": "tomato_disease_v1",
+      "display_name": "Tomato Disease Detector",
+      "model_path": "models/tomato_disease_v1.keras",
+      "model_version": "0.1.0",
+      "enabled": false,
+      "input_size": 224,
+      "preprocess": "mobilenet_v2",
+      "crop_tags": ["tomato"],
+      "class_names_path": "models/tomato_disease_labels.json"
+    },
+    {
+      "model_id": "corn_disease_v1",
+      "display_name": "Corn Disease Detector",
+      "model_path": "models/corn_disease_v1.keras",
+      "model_version": "0.1.0",
+      "enabled": false,
+      "input_size": 224,
+      "preprocess": "mobilenet_v2",
+      "crop_tags": ["corn", "maize"],
+      "class_names_path": "models/corn_disease_labels.json"
+    }
+  ]
+}

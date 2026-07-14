@@ -70,7 +70,7 @@ export default function AboutPage() {
             {
               step: "2",
               title: "AI Analysis",
-              desc: "Our MobileNetV2 model processes the image using deep learning algorithms.",
+              desc: "A registry-backed model routes the image to the right disease detector and preprocessing pipeline.",
               icon: Cpu,
             },
             {
@@ -99,7 +99,7 @@ export default function AboutPage() {
         <h2 className="text-center text-3xl font-bold text-[#1a2e1d]">Our AI Model</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[
-            { title: "Architecture", val: "MobileNetV2 Transfer Learning", icon: Layers },
+            { title: "Architecture", val: "Registry-backed multi-model inference", icon: Layers },
             { title: "Training Data", val: "50,000+ Labeled Plant Samples", icon: Database },
             { title: "Supported Plants", val: "Tomato, Potato, Corn, & more", icon: Leaf },
             { title: "Disease Coverage", val: "38+ Unique Conditions", icon: Bug }

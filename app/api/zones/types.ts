@@ -52,10 +52,13 @@ export interface ZoneData {
 
   // 🔥 NEW ML FIELDS
   disease?: string
+  canonicalDisease?: string
   mlConfidence?: number
   severityScore?: number
   severityLevel?: "low" | "moderate" | "high"
   lastAnalyzed?: string
+  mlModelId?: string | null
+  mlModelVersion?: string | null
 
   treatmentHistory?: DetectionEvent[]
 }
@@ -64,6 +67,7 @@ export type DetectionEvent = {
   id: string
   zoneId: string
   disease: string
+  canonicalDisease?: string
   confidence: number
   severityLevel: "low" | "moderate" | "high"
   severityScore: number
@@ -76,6 +80,8 @@ export type DetectionEvent = {
   treatedAt: string | null
   postSeverityScore: number | null
   linkedSprayId: string | null
+  modelId?: string | null
+  modelVersion?: string | null
 }
 
 export interface ZoneHistoryEntry {

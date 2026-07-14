@@ -125,7 +125,7 @@ export default function HomePage() {
       icon: Brain,
       title: "Disease Detection",
       description:
-        "Upload crop images and get instant AI diagnosis with severity scoring and confidence metrics powered by MobileNetV2.",
+        "Upload crop images and get instant AI diagnosis with severity scoring and confidence metrics powered by a registry-backed model stack.",
       href: "/dashboard/detection",
       accent: "bg-emerald-100",
     },
@@ -238,7 +238,7 @@ export default function HomePage() {
             className="max-w-2xl mx-auto text-lg text-white/70 leading-relaxed mb-10 animate-fade-in-up"
             style={{ animationDelay: "0.2s" }}
           >
-            MobileNetV2 disease detection · severity-weighted risk modeling · logarithmic spray optimization ·
+            Registry-backed disease detection · severity-weighted risk modeling · logarithmic spray optimization ·
             zone-level stability indexing — unified in one platform.
           </p>
 

@@ -19,9 +19,9 @@ export default function ClinicalPage() {
         <section className="space-y-4">
           <h2 className="text-xl font-semibold">1. Model Architecture</h2>
           <div className="bg-white p-6 rounded-xl border shadow-sm space-y-2">
-            <p><strong>Base Model:</strong> MobileNetV2 (Transfer Learning)</p>
+            <p><strong>Architecture:</strong> Registry-backed multi-model inference</p>
             <p><strong>Input Size:</strong> 224 × 224 RGB images</p>
-            <p><strong>Preprocessing:</strong> MobileNetV2 preprocess_input normalization</p>
+            <p><strong>Preprocessing:</strong> Model-specific preprocessing from registry metadata</p>
             <p><strong>Output Layer:</strong> Softmax multi-class classifier</p>
             <p><strong>Loss Function:</strong> Categorical Crossentropy</p>
             <p><strong>Optimizer:</strong> Adam</p>
