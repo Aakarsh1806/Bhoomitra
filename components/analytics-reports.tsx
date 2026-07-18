@@ -104,7 +104,7 @@ export default function AnalyticsPage() {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-black text-slate-900 tracking-tight">Intelligence Analytics</h1>
-            <p className="text-muted-foreground font-medium">Neural processing of farm ecosystem metadata</p>
+            <p className="text-muted-foreground font-medium">Headline risk &amp; stability reflect currently active detections; detailed zone, spray, disease, and trend views aggregate the full scan history.</p>
           </div>
           <Button 
             variant="outline" 
@@ -157,8 +157,11 @@ export default function AnalyticsPage() {
                    BACKEND-ALIGNED WEIGHTED RISK (6 / 3 / 1)
                 ============================================================ */
 
+                // Use the same farm-wide risk score the Farm Map shows
+                // (severity × confidence × freshness, per zone) so the headline
+                // risk/stability numbers agree across the app.
                 const weightedRiskPercent =
-                  Number(analytics?.severityBreakdown?.weightedRiskPercent ?? 0)
+                  Number(analytics?.currentRiskPercent ?? 0)
 
                 /* ============================================================
                    DETECTION PRESSURE INDEX
@@ -494,7 +497,7 @@ export default function AnalyticsPage() {
                 ============================================================ */
 
                 const containmentRatio =
-                  98.4 - (high / total) * 5 + (responsivenessIndex * 0.05)
+                  100 - (high / total) * 60 + (responsivenessIndex * 0.1)
 
                 const containmentIndex =
                   Math.max(0, Math.min(100, containmentRatio))
@@ -616,11 +619,11 @@ export default function AnalyticsPage() {
 
                       </div>
 
-                      <CalculationDetails 
+                      <CalculationDetails
                         title="Stability Core"
                         formulas={[
-                          { label: "Stability Index", math: "SI = 100 * (1 - CV) * β", desc: "Measures moisture coefficient of variance across zones to track climate homogenization." },
-                          { label: "Risk Weighting", math: "W_r = Σ(S_i * L_i) / Max(S)", desc: "Normalizes biological threats based on severity levels (High=9, Moderate=4, Low=1)." },
+                          { label: "Stability Index", math: "SI = 92 - W_r*0.15 - (100-P_s)*0.1 + R*0.1", desc: "Composite of weighted risk, spray precision (P_s), and response speed (R), clamped to 0-100." },
+                          { label: "Risk Weighting", math: "W_r = (H*6 + M*3 + L*1) / (T*6)", desc: "Normalizes biological threats by severity (High=6, Moderate=3, Low=1) over the worst case." },
                           { label: "Pressure Index", math: "PI = (H*2 + M*1.2 + L*0.6) / T", desc: "Determines the density of pathological pressure on the farm ecosystem." }
                         ]}
                       />
@@ -744,7 +747,7 @@ export default function AnalyticsPage() {
                     sprayPrecisionIndex * 0.2
 
                   const finalZoneStability =
-                    Math.max(40, Math.min(100, zoneStability))
+                    Math.max(0, Math.min(100, zoneStability))
 
                   return {
                     zoneId,
@@ -981,7 +984,7 @@ export default function AnalyticsPage() {
                     100 - Math.log(1 + actualSprays) * 8
 
                   const efficiencyIndex =
-                    Math.max(88, logEfficiency)
+                    Math.max(0, Math.min(100, logEfficiency))
 
                   /* ----- Combined Zone Efficiency Score ----- */
 
@@ -1370,7 +1373,7 @@ export default function AnalyticsPage() {
                   100 - Math.log(1 + totalSprays) * 25
 
                 const logEfficiencyIndex =
-                  Math.max(40, logPenalty)
+                  Math.max(0, Math.min(100, logPenalty))
 
                 /* ============================================================
                    SPRAY LOAD INDEX
@@ -1873,7 +1876,7 @@ export default function AnalyticsPage() {
                     : highCases / totalCases
 
                 const earlyWarningScore =
-                  Math.max(94.2, 100 - (highRatio * 25))
+                  Math.max(0, Math.min(100, 100 - (highRatio * 25)))
 
                 /* ============================================================
                    GLOBAL OUTBREAK RISK
@@ -2064,7 +2067,7 @@ export default function AnalyticsPage() {
                   yieldImprovement * 0.3
 
                 const aiImpactScore =
-                  Math.max(40, Math.min(100, aiMultiplier))
+                  Math.max(0, Math.min(100, aiMultiplier))
 
                 /* ============================================================
                    COMPARISON DATA FOR CHART
@@ -2099,7 +2102,7 @@ export default function AnalyticsPage() {
                         AI Impact Modeling Engine
                       </CardTitle>
                       <CardDescription>
-                        Comparative modeling of manual farming vs AI-driven intervention
+                        Projected estimate comparing a modeled manual-farming baseline against AI-guided intervention. Figures are model-based projections from severity-weighted assumptions, not measured field trial outcomes.
                       </CardDescription>
                     </CardHeader>
 

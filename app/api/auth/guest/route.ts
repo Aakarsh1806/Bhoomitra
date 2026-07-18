@@ -7,7 +7,7 @@ export async function POST(req: Request) {
     const sessionData = {
       id: "guest_" + Math.random().toString(36).substr(2, 5),
       name: "Guest Explorer",
-      email: "guest@manapolam.ai",
+      email: "guest@bhoomitra.ai",
       role: "viewer",
       permissions: ["dashboard", "map", "analytics"],
       iat: Date.now(),

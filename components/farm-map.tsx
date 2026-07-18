@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -454,22 +454,19 @@ export default function FarmMap() {
     .sort((a, b) => a.priority - b.priority || a.zoneId.localeCompare(b.zoneId))
     .slice(0, 4)
 
+  const visibleZonesRef = useRef(visibleZones)
+  visibleZonesRef.current = visibleZones
+  const zoneIdsKey = visibleZones.map(zone => zone.id).join(",")
+
   useEffect(() => {
-    if (visibleZones.length === 0) return
+    if (visibleZonesRef.current.length === 0) return
 
     const calculateML = () => {
       setMlData(prev => {
         const updated = { ...prev }
 
-        const dynamicZones = visibleZones.map(zone => zone.id)
-
-        dynamicZones.forEach(zoneId => {
-          const zone = visibleZones.find(z => z.id === zoneId)
-          if (!zone) return
+        visibleZonesRef.current.forEach(zone => {
           const confidence = calculateConfidence(zone)
-
-
-
 
           updated[zone.id] = {
             confidence,
@@ -491,7 +488,7 @@ export default function FarmMap() {
     const interval = setInterval(calculateML, 30000)
 
     return () => clearInterval(interval)
-  }, [visibleZones])
+  }, [zoneIdsKey])
 
   const getZoneColor = (zone: ZoneData) => {
     if (zone.gridColor === "green") {

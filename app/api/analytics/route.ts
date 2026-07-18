@@ -74,13 +74,20 @@ export async function GET() {
 
   /* ============================================================
      SEVERITY MODEL (6 / 3 / 1)
+     Weighted risk reflects CURRENT state — only active (untreated,
+     unresolved) detections — so it stays consistent with the live
+     Farm Map risk score instead of counting the full scan history.
   ============================================================ */
+
+  const activeSeverityDetections = detections.filter(
+    (d: any) => normalizeDetectionStatus(d.status) === "active" && !isHealthyDiseaseName(d.diseaseName || d.disease)
+  )
 
   let high = 0
   let moderate = 0
   let low = 0
 
-  detections.forEach((d: any) => {
+  activeSeverityDetections.forEach((d: any) => {
     const level = effectiveSeverityLevel(d)
     if (level === "high") high++
     else if (level === "moderate") moderate++
@@ -93,7 +100,7 @@ export async function GET() {
     low * 1
 
   const maxPossiblePenalty =
-    totalDetections * 6 || 1
+    activeSeverityDetections.length * 6 || 1
 
   const weightedRiskPercent =
     (severityPenalty / maxPossiblePenalty) * 100
@@ -234,7 +241,7 @@ export async function GET() {
       - avgDelayPenalty
 
     zoneEfficiency =
-      Math.max(40, zoneEfficiency)
+      Math.max(0, zoneEfficiency)
 
     zoneAnalytics.push({
       zoneId,
@@ -262,10 +269,18 @@ export async function GET() {
 
   /* ============================================================
      WATER MODELING
+     Manual baseline = blanket-spray every disease detection ever
+     recorded (non-healthy); AI = actual sprays performed. This is a
+     cumulative comparison, so it uses full history, not the active
+     subset used for the current-risk score above.
   ============================================================ */
 
+  const nonHealthyDetections = detections.filter(
+    (d: any) => !isHealthyDiseaseName(d.diseaseName || d.disease)
+  ).length
+
   const manualWater =
-    (high + moderate + low) * 15
+    nonHealthyDetections * 15
 
   const aiWater =
     totalSprays * 15

@@ -2,8 +2,7 @@
 
 import { useState } from "react"
 import { diseaseKnowledge } from "@/app/data/diseaseKnowledge"
-import { pesticideDatabase } from "@/app/data/pesticideDatabase"
-import { getSafePesticideRecommendation } from "@/app/lib/pesticideEngine"
+import { TELANGANA_OFFLINE_NOTICE } from "@/app/data/telanganaPesticideCatalog"
 import { addDetectionLog } from "@/app/lib/mlLogStore"
 import { useFarmStore } from "@/store/farmStore"
 import { toast } from "sonner"
@@ -71,28 +70,29 @@ export default function DetectionPage() {
       if (data.success) {
         const severityStr = data.detection.severityLevel.charAt(0).toUpperCase() + data.detection.severityLevel.slice(1)
         
-        // Use the robust engine instead of simple filter
-        const recommendation = getSafePesticideRecommendation(data.detection.disease)
-        const recommended = recommendation.pesticides[0]
+        const recommendation = data.recommendation || null
 
         addDetection({
           plantType: data.detection.disease.split("___")[0].replace(/_/g, " "),
           diseaseName: data.detection.disease.split("___")[1]?.replace(/_/g, " ") || "Healthy",
           severity: severityStr as any,
           infectedZoneId: zone,
-          pesticideName: recommended?.chemicalName || "Custom Neem Solution",
-          pesticideCategory: (recommended?.type as any) || "Organic",
-          dosagePerLiter: 2.5,
+          pesticideName: recommendation ? `${recommendation.activeIngredient} ${recommendation.formulation || ""}`.trim() : "General IPM recommendation",
+          pesticideCategory: recommendation?.category || "Organic",
+          dosagePerLiter: 0,
           coveragePerLiter: 100,
-          sprayInterval: recommended?.sprayInterval || "7-10 days",
-          preHarvestDays: parseInt(recommended?.preHarvestInterval) || 0,
+          sprayInterval: recommendation?.sprayInterval || "Consult local agriculture officer",
+          preHarvestDays: 0,
           createdAt: Date.now()
         })
 
         setResult({
+          detectionId: data.detection.id,
           disease: data.detection.disease,
           confidence: data.detection.confidence,
           severityLevel: data.detection.severityLevel,
+          recommendation,
+          recommendationNotice: data.recommendationNotice || TELANGANA_OFFLINE_NOTICE,
         })
         
         toast.success(`Analysis complete for Zone ${zone}`)
@@ -124,25 +124,11 @@ export default function DetectionPage() {
         result.severityLevel.slice(1)
       : null
 
-  const recommendedPesticides =
-    result?.disease
-      ? getSafePesticideRecommendation(result.disease).pesticides
-      : []
-
-  const organicSuggestions =
-    result?.disease
-      ? pesticideDatabase
-          .filter(p => 
-            p.type === "Organic" && 
-            (p.approvedFor.includes(result.disease) || p.approvedFor.includes("Any___Healthy"))
-          )
-          .map(p => `${p.chemicalName} - ${p.dosage}`)
-      : [
-          "Neem Oil (3-5 ml per liter of water)",
-          "Panchagavya (30ml per liter)",
-          "Trichoderma-based biological fungicide",
-          "Fermented Buttermilk (10% solution)"
-        ]
+  const recommendation = result?.recommendation
+  const recommendationName = recommendation
+    ? `${recommendation.activeIngredient} ${recommendation.formulation || ""}`.trim()
+    : null
+  const organicSuggestions = recommendation ? [recommendation.organicAlternative] : []
 
   return (
     <div className="min-h-screen space-y-8 animate-in fade-in duration-700">
@@ -266,7 +252,12 @@ export default function DetectionPage() {
                     >
                       {severity === "High" ? "Alert: Action Required" : severity === "Moderate" ? "Monitoring Required" : "System Normal"}
                     </Badge>
-                    <div className="text-xs font-bold text-slate-400">Scan ID: {Math.random().toString(36).substr(2, 9).toUpperCase()}</div>
+                    <div
+                      className="text-xs font-bold text-slate-400"
+                      title={result.detectionId || undefined}
+                    >
+                      Scan ID (short): {result.detectionId ? result.detectionId.split("-")[0].toUpperCase() : "—"}
+                    </div>
                   </div>
                   <CardTitle className="text-3xl font-black text-slate-800 mt-4 leading-tight">
                     {isHealthyResult ? "Healthy Crop" : detectedCondition}
@@ -331,9 +322,8 @@ export default function DetectionPage() {
 
                       {/* Pesticide Recommendation */}
                       <div className="space-y-4">
-                        {recommendedPesticides.length > 0 ? (
-                          recommendedPesticides.slice(0, 1).map((p, i) => (
-                            <div key={i} className="p-6 bg-slate-900 text-white rounded-[2rem] shadow-xl relative overflow-hidden h-full">
+                        {recommendation ? (
+                            <div className="p-6 bg-slate-900 text-white rounded-[2rem] shadow-xl relative overflow-hidden h-full">
                               <div className="absolute top-0 right-0 p-6 opacity-10">
                                 <FlaskConical className="h-24 w-24" />
                               </div>
@@ -341,21 +331,20 @@ export default function DetectionPage() {
                                 <ShieldCheck className="h-4 w-4" />
                                 Recommended Treatment
                               </h4>
-                              <p className="text-2xl font-black mb-1">{p.chemicalName}</p>
-                              <Badge variant="outline" className="border-green-800 text-green-400 mb-6">{p.type}</Badge>
+                              <p className="text-2xl font-black mb-1">{recommendationName}</p>
+                              <Badge variant="outline" className="border-green-800 text-green-400 mb-6">{recommendation.category}</Badge>
                               
                               <div className="grid grid-cols-2 gap-4 text-xs">
                                 <div className="space-y-1">
                                   <p className="text-slate-400 flex items-center gap-1"><Droplets className="h-3 w-3" /> Dosage</p>
-                                  <p className="font-bold">{p.dosage}</p>
+                                  <p className="font-bold">{recommendation.dosage}</p>
                                 </div>
                                 <div className="space-y-1">
                                   <p className="text-slate-400 flex items-center gap-1"><Clock className="h-3 w-3" /> Interval</p>
-                                  <p className="font-bold">{p.sprayInterval}</p>
+                                  <p className="font-bold">{recommendation.sprayInterval}</p>
                                 </div>
                               </div>
                             </div>
-                          ))
                         ) : (
                           <div className="p-6 bg-green-900 text-white rounded-[2rem] flex flex-col items-center justify-center text-center h-full">
                             <Leaf className="h-10 w-10 text-green-400 mb-4" />
@@ -366,6 +355,12 @@ export default function DetectionPage() {
                       </div>
                     </div>
                   </div>
+
+                  <Card className="bg-amber-50 border-amber-200 rounded-2xl p-5">
+                    <p className="text-xs font-bold text-amber-900 leading-relaxed">
+                      {result?.recommendationNotice || TELANGANA_OFFLINE_NOTICE} Manual farmer confirmation is required before any spray command.
+                    </p>
+                  </Card>
 
                    {/* Secondary Actions */}
                    <div className="grid md:grid-cols-2 gap-4">

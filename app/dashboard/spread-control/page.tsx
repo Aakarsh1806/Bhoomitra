@@ -23,6 +23,7 @@ interface Edge {
 }
 
 interface SimulationState {
+  time: number
   infected: string[]
   at_risk: string[]
   healthy: string[]
@@ -193,13 +194,13 @@ export default function SpreadControlPage() {
 
       const data = await response.json()
       // Auto-select recommended nodes
-      const recommendedIds = new Set(
-        data.recommended_nodes.map((r: any) => r.node_id)
+      const recommendedIds = new Set<string>(
+        data.recommended_nodes.map((r: { node_id: string }) => r.node_id)
       )
       setSelectedNodes(recommendedIds)
 
       // Re-run simulation with selected nodes
-  const initialInfectedList = initialInfected
+      const initialInfectedList = initialInfected
       await runSimulation(initialInfectedList, Array.from(recommendedIds))
 
       toast.success(`Recommended ${data.recommended_nodes.length} plots to protect`)

@@ -2,7 +2,7 @@
   {
     "id": "1",
     "name": "Admin User",
-    "email": "admin@manapolam.ai",
+    "email": "admin@bhoomitra.ai",
     "password": "password123",
     "role": "admin",
     "status": "active",
@@ -17,7 +17,7 @@
   {
     "id": "2",
     "name": "Field Manager",
-    "email": "manager@manapolam.ai",
+    "email": "manager@bhoomitra.ai",
     "password": "password123",
     "role": "manager",
     "status": "active",

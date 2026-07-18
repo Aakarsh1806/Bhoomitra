@@ -1,10 +1,13 @@
 import { pesticideDatabase } from "@/app/data/pesticideDatabase"
+import { getTelanganaOfflineRecommendation, TELANGANA_OFFLINE_NOTICE } from "@/app/data/telanganaPesticideCatalog"
 
 export type MLPredictionOptions = {
   modelId?: string
   crop?: string
   language?: string
 }
+
+const ML_SERVICE_URL = process.env.NEXT_PUBLIC_ML_SERVICE_URL ?? "http://127.0.0.1:5000"
 
 export function normalizeDiseaseLabel(disease: string) {
   const rawValue = Array.isArray(disease) ? disease.join(" ") : disease || ""
@@ -33,7 +36,7 @@ export async function runMLPrediction(file: File, options: MLPredictionOptions =
     formData.append("language", options.language)
   }
 
-  const response = await fetch("http://127.0.0.1:5000/predict", {
+  const response = await fetch(`${ML_SERVICE_URL}/predict`, {
     method: "POST",
     body: formData,
   })
@@ -59,6 +62,34 @@ export function calculateSeverity(
 export function getTreatmentOptions(disease: string) {
   const normalizedDisease = normalizeDiseaseLabel(disease)
 
+  if (normalizedDisease.includes("healthy")) {
+    return {
+      chemicals: [],
+      organic: ["Continue crop scouting, balanced irrigation and field sanitation."],
+      offlineRecommendation: null,
+      notice: "Healthy prediction: no pesticide treatment is recommended. Continue routine scouting and crop care.",
+    }
+  }
+
+  const telanganaRecommendation = getTelanganaOfflineRecommendation(disease)
+
+  if (telanganaRecommendation) {
+    return {
+      chemicals: [{
+        chemicalName: `${telanganaRecommendation.activeIngredient} ${telanganaRecommendation.formulation}`.trim(),
+        type: telanganaRecommendation.category,
+        dosage: telanganaRecommendation.dosage,
+        sprayInterval: telanganaRecommendation.sprayInterval,
+        safetyNote: telanganaRecommendation.safetyNote,
+        preHarvestInterval: telanganaRecommendation.preHarvestInterval,
+        resistanceGroup: telanganaRecommendation.resistanceGroup,
+      }],
+      organic: [telanganaRecommendation.organicAlternative],
+      offlineRecommendation: telanganaRecommendation,
+      notice: telanganaRecommendation.verificationNotice,
+    }
+  }
+
   const chemicals = pesticideDatabase.filter(p =>
     p.type !== "Organic" && p.approvedFor.some(approvedFor => normalizeDiseaseLabel(approvedFor).includes(normalizedDisease))
   )
@@ -76,5 +107,10 @@ export function getTreatmentOptions(disease: string) {
         "Liquid seaweed extract"
       ]
 
-  return { chemicals, organic }
+  return {
+    chemicals,
+    organic,
+    offlineRecommendation: null,
+    notice: `Using best-match offline IPM recommendation from our broader disease database. ${TELANGANA_OFFLINE_NOTICE}`,
+  }
 }

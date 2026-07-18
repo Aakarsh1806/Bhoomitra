@@ -192,6 +192,23 @@ export default function HomePage() {
     }
   }
 
+  const handleOpenDetection = async () => {
+    if (launchingDashboard) return
+
+    setLaunchingDashboard(true)
+    try {
+      const response = await fetch("/api/auth/unlock-dashboard", { method: "POST" })
+      if (!response.ok) throw new Error("Failed to unlock dashboard")
+
+      router.push("/dashboard/detection")
+      router.refresh()
+    } catch {
+      router.push("/login")
+    } finally {
+      setLaunchingDashboard(false)
+    }
+  }
+
   return (
     <div className="w-full font-sans">
 
@@ -238,8 +255,8 @@ export default function HomePage() {
             className="max-w-2xl mx-auto text-lg text-white/70 leading-relaxed mb-10 animate-fade-in-up"
             style={{ animationDelay: "0.2s" }}
           >
-            Registry-backed disease detection · severity-weighted risk modeling · logarithmic spray optimization ·
-            zone-level stability indexing — unified in one platform.
+            Smartphone disease detection · severity-weighted risk modeling · precision spray planning ·
+            zone-level farm intelligence — unified in one platform.
           </p>
 
           <div
@@ -254,12 +271,14 @@ export default function HomePage() {
             >
               {launchingDashboard ? "Opening..." : "Launch Dashboard"} <ArrowRight className="h-4 w-4" />
             </button>
-            <a
-              href="/detection"
+            <button
+              type="button"
+              onClick={handleOpenDetection}
+              disabled={launchingDashboard}
               className="inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold text-base transition-all duration-200 backdrop-blur"
             >
-              <Brain className="h-4 w-4" /> Detect Disease
-            </a>
+              <Brain className="h-4 w-4" /> {launchingDashboard ? "Opening..." : "Try Disease Detection"}
+            </button>
           </div>
         </div>
       </section>
@@ -267,10 +286,10 @@ export default function HomePage() {
       {/* ── System Status Strip ──────────────────────────────────────────── */}
       <section className="bg-[#1e3a23] border-b border-white/10">
         <div className="mx-auto max-w-6xl px-6 py-3 flex flex-wrap gap-3 justify-center">
-          <StatusPill icon={Cpu} label="AI Model" value="Active" color="text-lime-400" />
-          <StatusPill icon={Layers} label="Zones Monitored" value="24" color="text-emerald-400" />
-          <StatusPill icon={FlaskConical} label="Disease Classes" value="38" color="text-cyan-400" />
-          <StatusPill icon={Shield} label="System Status" value="Operational" color="text-lime-400" />
+          <StatusPill icon={Cpu} label="AI-assisted" value="Ready" color="text-lime-400" />
+          <StatusPill icon={Layers} label="Farm coverage" value="Zone-wise" color="text-emerald-400" />
+          <StatusPill icon={FlaskConical} label="Workflow" value="Detect → Decide → Act" color="text-cyan-400" />
+          <StatusPill icon={Shield} label="Demo status" value="Operational" color="text-lime-400" />
         </div>
       </section>
 
@@ -279,7 +298,7 @@ export default function HomePage() {
         <div className="text-center mb-12">
           <h2 className="text-3xl md:text-4xl font-bold text-[#1e3a23] mb-3">Platform Capabilities</h2>
           <p className="text-[#5a7a60] text-base max-w-xl mx-auto">
-            Every module is purpose-built for precision agriculture — no bloat, no guessing.
+            A practical workflow for small and marginal farms: detect early, act precisely, and keep an auditable record.
           </p>
         </div>
 
@@ -287,6 +306,29 @@ export default function HomePage() {
           {features.map((f, i) => (
             <FeatureCard key={f.href} {...f} delay={`${i * 0.07}s`} />
           ))}
+        </div>
+      </section>
+
+      <section className="bg-[#f7fbf4] border-y border-[#d4e9c8]">
+        <div className="mx-auto max-w-6xl px-6 py-16">
+          <div className="max-w-2xl mb-10">
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#3a7d44] mb-3">Designed for MSME-scale adoption</p>
+            <h2 className="text-3xl md:text-4xl font-bold text-[#1e3a23] mb-3">High-value decisions, without high-cost infrastructure.</h2>
+            <p className="text-[#5a7a60] leading-relaxed">Bhoomitra turns a crop photo and field observation into a clear next action, then keeps the decision trail ready for farmers, FPOs, input partners, and field teams.</p>
+          </div>
+          <div className="grid gap-5 md:grid-cols-3">
+            {[
+              { title: "1. Capture", text: "Use a smartphone image and basic field details—no specialist equipment required.", icon: Brain },
+              { title: "2. Prioritise", text: "See severity, affected zone, and a recommended response before applying inputs.", icon: Shield },
+              { title: "3. Prove", text: "Track detections and interventions in one place for follow-up and better seasonal decisions.", icon: BarChart3 },
+            ].map(({ title, text, icon: Icon }) => (
+              <div key={title} className="rounded-2xl bg-white border border-[#d4e9c8] p-6 shadow-sm">
+                <Icon className="h-6 w-6 text-[#3a7d44] mb-4" />
+                <h3 className="font-bold text-[#1e3a23] mb-2">{title}</h3>
+                <p className="text-sm leading-relaxed text-[#5a7a60]">{text}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -338,7 +380,7 @@ export default function HomePage() {
             Start Intelligent Farming Today
           </h2>
           <p className="text-white/65 text-lg mb-10 max-w-xl mx-auto">
-            Let AI handle risk modeling, spray optimization, and disease detection — so you can focus on growing.
+            Let AI support risk modeling, spray planning, and disease detection — so you can focus on growing.
           </p>
           <button
             type="button"

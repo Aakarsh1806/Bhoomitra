@@ -26,3 +26,8 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+backend*.log
+frontend*.log
+
+# claude code (local agent tooling & settings)
+.claude/

@@ -48,9 +48,9 @@ export default function AboutPage() {
           </div>
         </div>
         <div className="relative aspect-[4/3] rounded-[2rem] overflow-hidden shadow-xl border-4 border-white">
-          <img 
-            src="https://images.unsplash.com/photo-1523348837708-15d4a09cfac2?auto=format&fit=crop&q=80&w=800" 
-            alt="Smart Farming" 
+          <img
+            src="/diverse-farmers-harvest.png"
+            alt="Smart Farming"
             className="w-full h-full object-cover"
           />
         </div>
@@ -81,11 +81,11 @@ export default function AboutPage() {
             }
           ].map((item, i) => (
             <div key={i} className="space-y-4 flex flex-col items-center">
-              <div className="w-12 h-12 bg-[#10b981] text-white rounded-full flex items-center justify-center font-bold text-xl shadow-lg">
+              <div className="w-12 h-12 bg-[#3a7d44] text-white rounded-full flex items-center justify-center font-bold text-xl shadow-lg">
                 {item.step}
               </div>
               <div className="bg-white p-8 rounded-3xl border border-slate-100 shadow-sm w-full h-full hover:shadow-md transition-shadow">
-                <item.icon className="h-10 w-10 text-[#10b981] mx-auto mb-4" />
+                <item.icon className="h-10 w-10 text-[#3a7d44] mx-auto mb-4" />
                 <h3 className="font-bold text-[#1a2e1d] text-xl">{item.title}</h3>
                 <p className="text-slate-500 text-sm leading-relaxed mt-2">{item.desc}</p>
               </div>
@@ -105,7 +105,7 @@ export default function AboutPage() {
             { title: "Disease Coverage", val: "38+ Unique Conditions", icon: Bug }
           ].map((card, i) => (
             <div key={i} className="bg-white p-6 rounded-2xl border border-slate-100 flex flex-col items-center text-center space-y-2">
-              <h3 className="font-bold text-[#10b981] uppercase tracking-wider text-[10px]">{card.title}</h3>
+              <h3 className="font-bold text-[#3a7d44] uppercase tracking-wider text-[10px]">{card.title}</h3>
               <p className="text-slate-700 font-semibold text-sm leading-tight">{card.val}</p>
             </div>
           ))}
@@ -142,7 +142,7 @@ export default function AboutPage() {
           <p className="text-slate-600 max-w-xl mx-auto">Start detecting diseases in real-time and take control of your farm health.</p>
         </div>
         <Link href="/dashboard/detection" className="inline-block">
-          <Button size="lg" className="bg-[#10b981] hover:bg-[#059669] text-white px-10 rounded-xl h-12 shadow-lg shadow-green-500/20">
+          <Button size="lg" className="bg-[#3a7d44] hover:bg-[#2c5f34] text-white px-10 rounded-xl h-12 shadow-lg shadow-green-500/20">
             Start Detection
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
@@ -164,7 +164,7 @@ export default function AboutPage() {
             </div>
             <div>
               <p className="font-bold text-slate-800 text-sm">Smart Bridge Hyderabad</p>
-              <p className="text-xs text-slate-500">© 2026 Bhoomitra AI. All rights reserved.</p>
+              <p className="text-xs text-slate-500">© {new Date().getFullYear()} Bhoomitra AI. All rights reserved.</p>
             </div>
           </div>
         </div>

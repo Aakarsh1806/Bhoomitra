@@ -4,12 +4,14 @@ import path from "path"
 export type UserRecord = {
   id: string
   name: string
-  email: string
+  email?: string
   password?: string
   role?: string
   status?: string
   lastLogin?: string
   phone?: string
+  authMethod?: "password" | "phone" | "google"
+  phoneVerified?: boolean
   location?: string
   permissions?: string[]
   createdAt?: string

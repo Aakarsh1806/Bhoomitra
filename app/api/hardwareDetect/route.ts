@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server"
-import { zones, pendingCommands, updateHardwareState, recordActivity } from "../zones/data"
+import { zones, recordActivity } from "../zones/data"
 import { DetectionEvent } from "../zones/types"
 import { calculateSeverity, getTreatmentOptions, normalizeDiseaseLabel } from "@/app/lib/mlProcessor"
 import { readDB, writeDB } from "@/app/lib/database"
+
+const ML_SERVICE_URL = process.env.ML_SERVICE_URL ?? "http://127.0.0.1:5000"
 
 export async function POST(req: Request) {
   try {
@@ -37,7 +39,7 @@ export async function POST(req: Request) {
       flaskForm.append("language", language)
     }
 
-    const flaskRes = await fetch("http://127.0.0.1:5000/predict", {
+    const flaskRes = await fetch(`${ML_SERVICE_URL}/predict`, {
       method: "POST",
       body: flaskForm,
     })
@@ -66,13 +68,43 @@ export async function POST(req: Request) {
     }
 
     const isHealthyPrediction = normalizeDiseaseLabel(canonicalDisease).includes("healthy")
+    const isLowConfidencePrediction = !isHealthyPrediction && confidence < 0.65
 
     // 🔥 Severity calculation (healthy must stay low)
     const { level, score } = calculateSeverity(confidence, canonicalDisease)
 
     // 🔥 Treatment lookup
     const treatments = getTreatmentOptions(canonicalDisease)
-    const primaryChemical = treatments.chemicals?.[0]
+    const primaryChemical = isLowConfidencePrediction ? undefined : treatments.chemicals?.[0]
+    const primaryRecommendation = !isLowConfidencePrediction && treatments.offlineRecommendation
+      ? {
+          activeIngredient: treatments.offlineRecommendation.activeIngredient,
+          formulation: treatments.offlineRecommendation.formulation,
+          category: treatments.offlineRecommendation.category,
+          dosage: treatments.offlineRecommendation.dosage,
+          sprayInterval: treatments.offlineRecommendation.sprayInterval,
+          preHarvestInterval: treatments.offlineRecommendation.preHarvestInterval,
+          resistanceGroup: treatments.offlineRecommendation.resistanceGroup,
+          safetyNote: treatments.offlineRecommendation.safetyNote,
+          organicAlternative: treatments.offlineRecommendation.organicAlternative,
+          verificationNotice: treatments.offlineRecommendation.verificationNotice,
+          source: "telangana-offline",
+        }
+      : primaryChemical
+        ? {
+            activeIngredient: primaryChemical.chemicalName,
+            formulation: "",
+            category: primaryChemical.type,
+            dosage: primaryChemical.dosage,
+            sprayInterval: primaryChemical.sprayInterval,
+            preHarvestInterval: primaryChemical.preHarvestInterval,
+            resistanceGroup: primaryChemical.resistanceGroup ?? "Not specified",
+            safetyNote: primaryChemical.safetyNote,
+            organicAlternative: treatments.organic?.[0] ?? "Neem Oil Extract",
+            verificationNotice: treatments.notice,
+            source: "database-fallback",
+          }
+        : null
 
     // 🔥 Create detection object
     const newDetection: DetectionEvent = {
@@ -86,9 +118,9 @@ export async function POST(req: Request) {
       recommendedChemical:
         primaryChemical?.chemicalName ?? "No chemical required",
       organicAlternative:
-        treatments.organic?.[0] ?? "Neem Oil Extract",
+        treatments.organic?.[0] ?? "Consult local agricultural extension",
       dosage:
-        primaryChemical?.dosage ?? (treatments.organic?.[0]?.includes("(") ? treatments.organic[0].split("(")[1]?.replace(")", "") : "5ml/L"),
+        primaryChemical?.dosage ?? "No spray dose—recheck the diagnosis and consult local extension",
       timestamp: new Date().toISOString(),
 
       status: isHealthyPrediction ? "resolved" : "active",
@@ -103,51 +135,22 @@ export async function POST(req: Request) {
     // 🔥 READ DB
     const db = readDB()
 
+    // A fresh scan of a zone reflects its current state — supersede any
+    // prior active detections for this zone so risk analytics reflect what
+    // the plot looks like now, not the full history of every past scan.
+    db.detections.forEach((d: any) => {
+      if (d.zoneId === zoneId && d.status !== "resolved" && d.status !== "treated") {
+        d.status = "resolved"
+      }
+    })
+
     // Save detection persistently
     db.detections.push(newDetection)
     recordActivity({ type: "alert", zoneId, timestamp: newDetection.timestamp })
 
-    // 🚿 AUTO SPRAY — Only if severity not low
-    if (!isHealthyPrediction && level !== "low") {
-      const sprayId = crypto.randomUUID()
-      const sprayTimestamp = new Date().toISOString()
-
-      db.sprays.push({
-        id: sprayId,
-        zoneId,
-        detectionId: newDetection.id,
-        manualWithoutDetection: false,
-        disease,
-        chemical:
-          primaryChemical?.chemicalName ?? (treatments.organic?.[0]?.split(" (")[0] || "Neem Oil Extract"),
-        dosage:
-          primaryChemical?.dosage ?? (treatments.organic?.[0]?.includes("(") ? treatments.organic[0].split("(")[1]?.replace(")", "") : "5ml/L"),
-        timestamp: sprayTimestamp,
-        triggeredBy: "AI Auto Spray",
-      })
-
-      // Keep detection-spray lifecycle linked for auto operations as well.
-      newDetection.status = "treated"
-      newDetection.treatedAt = sprayTimestamp
-      newDetection.linkedSprayId = sprayId
-
-      if (!pendingCommands[zoneId]) {
-        pendingCommands[zoneId] = []
-      }
-      pendingCommands[zoneId].push("spray")
-
-      updateHardwareState({
-        currentAction: "spray",
-        activeZoneId: zoneId,
-        currentPath: [zoneId],
-        nozzleStatus: "pending",
-        lastCommand: `spray:${zoneId}`,
-        lastCommandAt: sprayTimestamp,
-        awaitingFeedback: true,
-      })
-
-      zone.lastSprayed = sprayTimestamp
-    }
+    // The offline catalog is decision support. Physical spraying must be a
+    // separately confirmed farmer action (via /api/spray), never an automatic
+    // ML side effect.
 
     // 🔥 WRITE DB
     writeDB(db)
@@ -169,6 +172,10 @@ export async function POST(req: Request) {
     return NextResponse.json({
       success: true,
       detection: newDetection,
+      recommendation: primaryRecommendation,
+      recommendationNotice: isLowConfidencePrediction
+        ? "Low-confidence prediction: no pesticide recommendation is shown. Retake a clear leaf photo and confirm the diagnosis with local agricultural extension."
+        : treatments.notice,
       modelId: selectedModelId,
       modelVersion: selectedModelVersion,
     })
