@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react"
 import { Sprout, MapPinned, Grid3X3, Cpu, ArrowRight, ArrowLeft, CheckCircle2 } from "lucide-react"
+import FarmLocationPicker from "@/components/farm-location-picker"
+import type { FarmLocation } from "@/app/lib/farmLocation"
 
 type BasicInfo = {
   farmerName: string
@@ -56,6 +58,7 @@ export default function FarmerOnboarding({ onComplete }: Props) {
     acres: 2,
     primaryCrop: "Paddy",
   })
+  const [farmLocation, setFarmLocation] = useState<FarmLocation | null>(null)
 
   const zones = useMemo(() => calculateZones(basicInfo.acres), [basicInfo.acres])
   const zoneIds = useMemo(() => generateZoneIds(zones), [zones])
@@ -79,7 +82,12 @@ export default function FarmerOnboarding({ onComplete }: Props) {
     basicInfo.farmerName.trim().length > 1 &&
     basicInfo.village.trim().length > 1 &&
     basicInfo.district.trim().length > 1 &&
-    !!basicInfo.primaryCrop
+    !!basicInfo.primaryCrop &&
+    !!farmLocation
+
+  const farmLocationLabel = [basicInfo.village.trim(), basicInfo.district.trim()]
+    .filter(Boolean)
+    .join(", ")
 
   const handleSave = async () => {
     setSaving(true)
@@ -96,6 +104,7 @@ export default function FarmerOnboarding({ onComplete }: Props) {
       zoneCount: zones,
       zoneNames: zoneNameMap,
       sensorAssignments,
+      farmLocation,
     }
 
     try {
@@ -215,6 +224,12 @@ export default function FarmerOnboarding({ onComplete }: Props) {
                 />
                 <p className="mt-1 text-xs text-lime-700">Range: 2 to 10 acres</p>
               </div>
+
+              <FarmLocationPicker
+                value={farmLocation}
+                onChange={setFarmLocation}
+                fallbackLabel={farmLocationLabel}
+              />
             </div>
           )}
 

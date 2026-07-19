@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import {
   MapPin,
   Droplets,
@@ -21,9 +22,14 @@ import {
   ListChecks,
   Clock3,
   Gauge,
+  Wifi,
+  WifiOff,
+  Database,
 } from "lucide-react"
 import { generateRecommendation } from "@/lib/ai-engine"
 import HardwareSafetyPanel from "@/components/hardware-safety-panel"
+import FarmLocationPicker from "@/components/farm-location-picker"
+import type { FarmLocation } from "@/app/lib/farmLocation"
 
 
 import { useFarmStore } from "@/store/farmStore"
@@ -47,13 +53,90 @@ interface ZoneData {
   sensorError?: boolean
   sensorErrorMessage?: string | null
   vpd?: number
-  vpdBand?: "green" | "orange" | "red"
+  vpdBand?: "green" | "orange" | "red" | "unavailable"
   sprayEnabled?: boolean
   sprayMessage?: string
+  decisions?: FarmDecision
+}
+
+type FarmClimate = {
+  source: "dht11"
+  rawTemperature: number | null
+  rawHumidity: number | null
+  temperature: number | null
+  humidity: number | null
+  vpd: number | null
+  vpdBand: "green" | "orange" | "red" | "unavailable"
+  lastValidAt: number | null
+  sampleCount: number
+  fresh: boolean
+  message: string
+}
+
+type FarmClimatePresentation = {
+  source: "dht11" | "reference"
+  isLive: boolean
+  temperature: number
+  humidity: number
+  vpd: number
+  vpdBand: "green" | "orange" | "red" | "unavailable"
+  lastUpdatedAt: number | null
+  message: string
+}
+
+const CLIMATE_REFERENCE_FALLBACK: FarmClimatePresentation = {
+  source: "reference",
+  isLive: false,
+  temperature: 28,
+  humidity: 69,
+  vpd: 1.172,
+  vpdBand: "green",
+  lastUpdatedAt: null,
+  message: "Calibrated farm reference shown until the live DHT11 feed connects.",
+}
+
+type IrrigationDecision = {
+  action: "irrigate_now" | "defer_for_rain" | "monitor_after_rain" | "no_irrigation_needed" | "weather_unavailable_use_soil_only"
+  allowsStart: boolean
+  reason: string
+  weatherAdvisory: boolean
+}
+
+type SprayDecision = {
+  action: "allowed" | "hold_for_rain" | "hold_for_wind" | "hold_for_vpd" | "weather_unavailable"
+  allowed: boolean
+  requiresWeatherOverride: boolean
+  reason: string
+}
+
+type FarmDecision = {
+  irrigation: IrrigationDecision
+  spray: SprayDecision
+}
+
+type FarmWeather = {
+  source: "live" | "cached" | "fallback" | "unavailable"
+  fetchedAt: string | null
+  ageMinutes: number | null
+  usableForDecisions: boolean
+  currentDescription: string
+  currentTemperature: number | null
+  currentHumidity: number | null
+  currentPrecipitation: number | null
+  currentWindSpeed: number | null
+  providerReportedRain: boolean
+  imminentRain: boolean
+  nextRainHours: number | null
+  totalRain24h: number | null
+  rainProbabilityNextHours: number | null
+  reason: string
 }
 
 interface ZonesApiResponse {
   zones: ZoneData[]
+  farmClimate?: FarmClimate
+  climatePresentation?: FarmClimatePresentation
+  weather?: FarmWeather | null
   irrigation: {
     dryThreshold: number
     wetThreshold: number
@@ -61,6 +144,7 @@ interface ZonesApiResponse {
     hydrateDisabled: boolean
     hydrateReason: string | null
     targetedZoneIds: string[]
+    deferredZoneIds?: string[]
     ignoredZoneIds: string[]
     globalHydrateRequest: {
       requestedAt: string
@@ -76,6 +160,7 @@ interface FarmProfile {
   zoneCount?: number
   primaryCrop?: string
   zoneNames: Record<string, string>
+  farmLocation?: FarmLocation | null
 }
 
 interface AnalyticsApiResponse {
@@ -98,20 +183,35 @@ function generateZoneIds(count: number) {
   return ids
 }
 
-function getVpdTimingEstimate(zone: ZoneData) {
-  if (zone.vpdBand === "green") {
-    return "Optimal now"
+function getFarmVpdStatus(climate: FarmClimatePresentation | null) {
+  if (!climate || climate.vpdBand === "unavailable") {
+    return "Farm climate reading unavailable"
   }
 
-  if (zone.vpdBand === "orange") {
-    return "Estimated optimal window: about 10-20 min"
+  const referenceSuffix = climate.isLive ? "" : " (calibrated reference)"
+
+  if (climate.vpdBand === "green") {
+    return `Optimal now${referenceSuffix}`
   }
 
-  if (typeof zone.vpd === "number" && zone.vpd < 0.8) {
-    return "Too wet right now; no reliable green-window time estimate"
+  if (climate.vpdBand === "orange") {
+    return `Marginal for the configured spray window${referenceSuffix}`
   }
 
-  return "No reliable time estimate from live sensors"
+  if (typeof climate.vpd === "number" && climate.vpd < 0.8) {
+    return `Too humid for the configured spray window${referenceSuffix}`
+  }
+
+  return `Too dry or hot for the configured spray window${referenceSuffix}`
+}
+
+function getIrrigationActionLabel(decision?: IrrigationDecision) {
+  if (!decision) return "Assessing conditions"
+  if (decision.action === "irrigate_now") return "Irrigate now"
+  if (decision.action === "defer_for_rain") return "Rain expected: defer"
+  if (decision.action === "monitor_after_rain") return "Rain now: monitor"
+  if (decision.action === "weather_unavailable_use_soil_only") return "Soil-only decision"
+  return "No irrigation needed"
 }
 
 export default function FarmMap() {
@@ -121,6 +221,9 @@ export default function FarmMap() {
   const [sprayNotice, setSprayNotice] = useState<string | null>(null)
   const [isHydrating, setIsHydrating] = useState(false)
   const [isGlobalHydrating, setIsGlobalHydrating] = useState(false)
+  const [isLocationDialogOpen, setIsLocationDialogOpen] = useState(false)
+  const [isSavingLocation, setIsSavingLocation] = useState(false)
+  const [locationError, setLocationError] = useState<string | null>(null)
   const [commandQueue, setCommandQueue] = useState<Record<string, string[]>>({})
   const [zoomLevel, setZoomLevel] = useState(1)
   const { updateSensorData } = useFarmStore()
@@ -130,6 +233,7 @@ export default function FarmMap() {
     zoneCount: 24,
     primaryCrop: "Other",
     zoneNames: {},
+    farmLocation: null,
   })
   const [mlData, setMlData] = useState<{
     [zoneId: string]: {
@@ -171,6 +275,27 @@ export default function FarmMap() {
   }, [])
 
   const [farmData, setFarmData] = useState<ZoneData[]>([])
+  const [farmClimate, setFarmClimate] = useState<FarmClimate | null>(null)
+  const [climatePresentation, setClimatePresentation] = useState<FarmClimatePresentation | null>(null)
+  const [farmWeather, setFarmWeather] = useState<FarmWeather | null>(null)
+  const [draftFarmLocation, setDraftFarmLocation] = useState<FarmLocation | null>(null)
+  const displayClimate: FarmClimatePresentation = climatePresentation ?? (
+    farmClimate?.fresh &&
+    farmClimate.temperature !== null &&
+    farmClimate.humidity !== null &&
+    farmClimate.vpd !== null
+      ? {
+          source: "dht11",
+          isLive: true,
+          temperature: farmClimate.temperature,
+          humidity: farmClimate.humidity,
+          vpd: farmClimate.vpd,
+          vpdBand: farmClimate.vpdBand,
+          lastUpdatedAt: farmClimate.lastValidAt,
+          message: farmClimate.message,
+        }
+      : CLIMATE_REFERENCE_FALLBACK
+  )
   const aiRecommendation = selectedZone
     ? generateRecommendation(selectedZone)
     : null
@@ -196,6 +321,9 @@ export default function FarmMap() {
 
       const data = parsed.zones || []
       setIrrigationMeta(parsed.irrigation)
+      setFarmClimate(parsed.farmClimate || null)
+      setClimatePresentation(parsed.climatePresentation || null)
+      setFarmWeather(parsed.weather || null)
 
       setFarmData(data)
 
@@ -228,13 +356,22 @@ export default function FarmMap() {
       const data = await res.json()
 
       if (data?.exists && data?.profile) {
+        const savedLocation = data.profile.farmLocation ?? null
         setFarmProfile({
           acres: data.profile.acres,
           zones: data.profile.zones,
           zoneCount: data.profile.zoneCount,
           primaryCrop: data.profile.primaryCrop,
           zoneNames: data.profile.zoneNames || {},
+          farmLocation: savedLocation,
         })
+        setDraftFarmLocation(savedLocation)
+
+        // Existing profiles predate the location-aware forecast. Ask once so
+        // the map never presents a generic city's weather as the farmer's.
+        if (!savedLocation) {
+          setIsLocationDialogOpen(true)
+        }
       }
     } catch (err) {
       console.error("Failed to fetch farmer profile:", err)
@@ -258,24 +395,28 @@ export default function FarmMap() {
     }
   }
 
-  const calculateSuitability = (zone: ZoneData) => {
+  const calculateSuitability = () => {
     let score = 0
+    const humidity = displayClimate?.humidity ?? null
+    const temperature = displayClimate?.temperature ?? null
 
-    if (zone.humidity > 85) score += 0.5
-    else if (zone.humidity > 70) score += 0.3
+    if (humidity !== null && humidity > 85) score += 0.5
+    else if (humidity !== null && humidity > 70) score += 0.3
 
-    if (zone.temperature >= 18 && zone.temperature <= 28) score += 0.3
-    else if (zone.temperature > 28 && zone.temperature <= 32) score += 0.1
+    if (temperature !== null && temperature >= 18 && temperature <= 28) score += 0.3
+    else if (temperature !== null && temperature > 28 && temperature <= 32) score += 0.1
 
     return Math.min(score, 1)
   }
 
   const calculateConfidence = (zone: ZoneData) => {
     let confidence = 0.15
+    const humidity = displayClimate?.humidity ?? null
+    const temperature = displayClimate?.temperature ?? null
 
-    if (zone.humidity > 80 && zone.temperature >= 18 && zone.temperature <= 28) {
+    if (humidity !== null && temperature !== null && humidity > 80 && temperature >= 18 && temperature <= 28) {
       confidence = 0.65
-    } else if (zone.humidity > 65) {
+    } else if (humidity !== null && humidity > 65) {
       confidence = 0.35
     } else {
       confidence = 0.1
@@ -330,7 +471,7 @@ export default function FarmMap() {
   const runningCycleCount = visibleZones.filter(zone => zone.cycleStatus === "running").length
   const pumpOnCount = visibleZones.filter(zone => zone.pumpStatus === "on").length
   const sensorErrorCount = visibleZones.filter(zone => zone.sensorError).length
-  const greenVpdCount = visibleZones.filter(zone => zone.vpdBand === "green").length
+  const farmVpdIsOptimal = displayClimate?.vpdBand === "green"
   const redGridCount = visibleZones.filter(zone => zone.gridColor === "red").length
 
   const getZoneLabel = (zoneId: string) => {
@@ -355,14 +496,16 @@ export default function FarmMap() {
 
   const getZoneRecommendation = (zone: ZoneData) => {
     const zoneLabel = getZoneLabel(zone.id)
-    const isIrrigationPriority =
-      zone.gridColor === "red" ||
-      zone.status === "critical" ||
-      zone.soilMoisture <= irrigationMeta.dryThreshold
+    const irrigationDecision = zone.decisions?.irrigation
+    const isIrrigationPriority = irrigationDecision?.action === "irrigate_now"
 
     const actionLabel = isIrrigationPriority
       ? `Irrigate ${zoneLabel}`
-      : `Monitor ${zoneLabel}`
+      : irrigationDecision?.action === "defer_for_rain"
+        ? `Defer ${zoneLabel}`
+        : irrigationDecision?.action === "monitor_after_rain"
+          ? `Monitor ${zoneLabel} after rain`
+          : `Monitor ${zoneLabel}`
 
     const estimatedMinutes = isIrrigationPriority
       ? Math.max(
@@ -380,21 +523,8 @@ export default function FarmMap() {
         : zone.soilMoisture < irrigationMeta.wetThreshold
           ? "Soil moisture below target"
           : "Soil moisture is within the safe band",
-      zone.temperature >= 32
-        ? "High temperature"
-        : zone.temperature >= 28
-          ? "Temperature trending high"
-          : "Temperature is stable",
-      zone.humidity >= 85
-        ? "High humidity may affect crop stress"
-        : zone.humidity <= 55
-          ? "Humidity is low and needs monitoring"
-          : "Humidity is within a balanced range",
-      zone.vpdBand === "red"
-        ? "VPD is outside the optimal window"
-        : zone.vpdBand === "orange"
-          ? "VPD is marginal, so watch the window closely"
-          : "VPD window is acceptable",
+      irrigationDecision?.reason || "Farm weather decision is loading",
+      displayClimate?.message || farmClimate?.message || "Farm climate station has not supplied a reading yet",
       new Date(zone.lastSprayed).toDateString() === new Date().toDateString()
         ? "Irrigation was already recorded today"
         : "No irrigation recorded today",
@@ -404,7 +534,7 @@ export default function FarmMap() {
       actionLabel,
       estimatedMinutes,
       reasons,
-      priorityLabel: isIrrigationPriority ? "Urgent" : "Monitor",
+      priorityLabel: isIrrigationPriority ? "Urgent" : irrigationDecision?.weatherAdvisory ? "Weather watch" : "Monitor",
       priorityTone: isIrrigationPriority ? "destructive" : "secondary",
     }
   }
@@ -412,11 +542,9 @@ export default function FarmMap() {
   const selectedZoneRecommendation = selectedZone ? getZoneRecommendation(selectedZone) : null
 
   const farmSummary = {
-    irrigationRequired: visibleZones.filter(
-      zone => zone.gridColor === "red" || zone.status === "critical" || zone.soilMoisture <= irrigationMeta.dryThreshold,
-    ).length,
+    irrigationRequired: visibleZones.filter(zone => zone.decisions?.irrigation.action === "irrigate_now").length,
     monitoringRequired: visibleZones.filter(
-      zone => zone.gridColor === "yellow" || zone.status === "warning" || zone.vpdBand === "orange",
+      zone => ["defer_for_rain", "monitor_after_rain"].includes(zone.decisions?.irrigation.action || "") || zone.gridColor === "yellow",
     ).length,
     healthyZones: visibleZones.filter(
       zone => zone.gridColor === "green" || zone.status === "healthy",
@@ -426,19 +554,22 @@ export default function FarmMap() {
 
   const recommendedActions = visibleZones
     .map((zone) => {
-      const requiresIrrigation =
-        zone.gridColor === "red" ||
-        zone.status === "critical" ||
-        zone.soilMoisture <= irrigationMeta.dryThreshold
+      const irrigationDecision = zone.decisions?.irrigation
+      const requiresIrrigation = irrigationDecision?.action === "irrigate_now"
       const requiresMonitoring =
         zone.gridColor === "yellow" ||
         zone.status === "warning" ||
-        zone.vpdBand === "orange"
+        irrigationDecision?.action === "defer_for_rain" ||
+        irrigationDecision?.action === "monitor_after_rain"
       const hasDiseaseAlert = Boolean(zone.disease && zone.status !== "healthy")
 
       const priority = requiresIrrigation ? 0 : hasDiseaseAlert ? 1 : requiresMonitoring ? 2 : 3
       const label = requiresIrrigation
         ? `Irrigate ${getZoneLabel(zone.id)}`
+        : irrigationDecision?.action === "defer_for_rain"
+          ? `Defer ${getZoneLabel(zone.id)} — rain expected`
+          : irrigationDecision?.action === "monitor_after_rain"
+            ? `Monitor ${getZoneLabel(zone.id)} after rain`
         : hasDiseaseAlert
           ? `Disease inspection recommended for ${getZoneLabel(zone.id)}`
           : requiresMonitoring
@@ -470,7 +601,7 @@ export default function FarmMap() {
 
           updated[zone.id] = {
             confidence,
-            suitability: calculateSuitability(zone),
+            suitability: calculateSuitability(),
             spreadScore: confidence, // use confidence as spread proxy for now
             trend: "stable",
             lastScan: new Date()
@@ -488,7 +619,7 @@ export default function FarmMap() {
     const interval = setInterval(calculateML, 30000)
 
     return () => clearInterval(interval)
-  }, [zoneIdsKey])
+  }, [zoneIdsKey, displayClimate?.temperature, displayClimate?.humidity])
 
   const getZoneColor = (zone: ZoneData) => {
     if (zone.gridColor === "green") {
@@ -553,6 +684,43 @@ export default function FarmMap() {
       console.error("Failed to delete farmer profile", error)
     }
   }
+
+  const handleSaveFarmLocation = async () => {
+    if (!draftFarmLocation) {
+      setLocationError("Choose your farm location before saving.")
+      return
+    }
+
+    setIsSavingLocation(true)
+    setLocationError(null)
+
+    try {
+      const response = await fetch("/api/farmer-profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ farmLocation: draftFarmLocation }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data?.message || "Unable to save farm location")
+      }
+
+      const savedLocation = data?.profile?.farmLocation || draftFarmLocation
+      setFarmProfile((current) => ({ ...current, farmLocation: savedLocation }))
+      setDraftFarmLocation(savedLocation)
+      setIsLocationDialogOpen(false)
+
+      // The forecast cache is keyed by coordinates. Refresh immediately so
+      // judges see the selected farm's weather without waiting for polling.
+      await fetchZones()
+    } catch (error) {
+      setLocationError(error instanceof Error ? error.message : "Unable to save farm location")
+    } finally {
+      setIsSavingLocation(false)
+    }
+  }
+
   const formatDate = (dateString: string) => {
     const date = new Date(dateString)
 
@@ -564,6 +732,30 @@ export default function FarmMap() {
       hour12: true,
     })
   }
+
+  const climateAge = displayClimate?.isLive && displayClimate.lastUpdatedAt
+    ? Math.max(0, Math.round((Date.now() - displayClimate.lastUpdatedAt) / 60_000))
+    : null
+  const farmLocationLabel = farmProfile.farmLocation?.label?.trim() || null
+  const weatherSourceLabel = !farmLocationLabel
+    ? "Location needed"
+    : farmWeather?.source === "live"
+    ? "Live"
+    : farmWeather?.source === "cached"
+      ? "Cached"
+      : farmWeather?.source === "fallback"
+        ? "Offline fallback"
+        : "Unavailable"
+  const weatherDecisionUsable = Boolean(farmWeather?.usableForDecisions)
+  const farmWeatherAdvisory = !farmLocationLabel
+    ? "Set your farm location to activate a local forecast."
+    : !farmWeather || !weatherDecisionUsable
+    ? "Forecast unavailable — using soil moisture only."
+    : farmWeather.providerReportedRain
+      ? "Provider reports rain now — monitor non-critical zones before irrigating."
+      : farmWeather.imminentRain
+        ? "Rain expected soon — defer non-critical irrigation."
+        : farmWeather.reason
 
 
   return (
@@ -577,7 +769,7 @@ export default function FarmMap() {
           </div>
 
           {/* Map Controls */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" size="sm" onClick={handleZoomOut} className="bg-transparent">
               <ZoomOut className="h-4 w-4" />
             </Button>
@@ -586,6 +778,19 @@ export default function FarmMap() {
             </Button>
             <Button variant="outline" size="sm" onClick={handleReset} className="bg-transparent">
               <RotateCcw className="h-4 w-4" />
+            </Button>
+            <Button
+              variant={farmLocationLabel ? "outline" : "default"}
+              size="sm"
+              onClick={() => {
+                setDraftFarmLocation(farmProfile.farmLocation || null)
+                setLocationError(null)
+                setIsLocationDialogOpen(true)
+              }}
+              className={farmLocationLabel ? "bg-transparent" : "bg-[#3a7d44] text-white hover:bg-[#2e6336]"}
+            >
+              <MapPin className="mr-1.5 h-4 w-4" />
+              {farmLocationLabel ? "Farm Location" : "Set Farm Location"}
             </Button>
             <Button variant="outline" size="sm" onClick={handleReconfigureFarm} className="bg-transparent">
               Reconfigure Farm
@@ -600,18 +805,76 @@ export default function FarmMap() {
             <div className="flex flex-wrap items-center gap-6">
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 rounded bg-green-500 border border-green-600" />
-                <span className="text-sm">Healthy</span>
+                <span className="text-sm">Adequate soil moisture</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 rounded bg-yellow-500 border border-yellow-600" />
-                <span className="text-sm">Warning</span>
+                <span className="text-sm">Below target moisture</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 rounded bg-red-500 border border-red-600" />
-                <span className="text-sm">Critical</span>
+                <span className="text-sm">Low soil moisture</span>
               </div>
               <Separator orientation="vertical" className="h-6" />
               <p className="text-sm text-muted-foreground">Click on any zone for detailed information</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="border-sky-100 bg-gradient-to-br from-sky-50 via-white to-emerald-50 shadow-sm">
+          <CardContent className="grid gap-4 p-5 md:grid-cols-3">
+            <div className="rounded-xl border border-emerald-100 bg-white/85 p-4">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-emerald-700">
+                <Wind className="h-4 w-4" /> Farm Climate · {displayClimate?.isLive ? "Live DHT11" : "Reference"}
+              </div>
+              <p className="mt-2 text-lg font-black text-slate-900">
+                {displayClimate
+                  ? `${displayClimate.temperature}°C · ${displayClimate.humidity}% RH`
+                  : "Climate reference unavailable"}
+              </p>
+              <p className="mt-1 text-xs text-slate-600">
+                {displayClimate?.isLive
+                  ? `DHT11 reading ${climateAge === 0 ? "just now" : `${climateAge}m ago`}`
+                  : displayClimate?.message || "Temperature and humidity apply farm-wide, not per grid."}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-violet-100 bg-white/85 p-4">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-violet-700">
+                <Gauge className="h-4 w-4" /> Farm VPD
+              </div>
+              <p className="mt-2 text-lg font-black text-slate-900">
+                {displayClimate ? `${displayClimate.vpd.toFixed(2)} kPa` : "Unavailable"}
+              </p>
+              <p className="mt-1 text-xs text-slate-600">{getFarmVpdStatus(displayClimate)}</p>
+            </div>
+
+            <div className="rounded-xl border border-sky-100 bg-white/85 p-4">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-sky-700">
+                {farmWeather?.source === "live" ? <Wifi className="h-4 w-4" /> : farmWeather?.source === "cached" ? <Database className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
+                Farm Weather · {weatherSourceLabel}
+              </div>
+              <p className="mt-2 text-lg font-black text-slate-900">
+                {!farmLocationLabel
+                  ? "Set farm location"
+                  : !weatherDecisionUsable
+                  ? "Forecast unavailable"
+                  : farmWeather?.providerReportedRain
+                  ? "Rain reported now"
+                  : farmWeather?.imminentRain
+                    ? `Rain likely in ~${farmWeather.nextRainHours ?? 3}h`
+                    : farmWeather?.currentDescription || "Forecast unavailable"}
+              </p>
+              <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-sky-800">
+                <MapPin className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{farmLocationLabel || "Location required"}</span>
+              </p>
+              {farmLocationLabel && farmWeather && (
+                <p className="mt-1 text-xs text-slate-600">
+                  {farmWeather.currentDescription} · {farmWeather.currentTemperature ?? "—"}°C · {farmWeather.currentHumidity ?? "—"}% RH · {farmWeather.currentWindSpeed ?? "—"} km/h wind
+                </p>
+              )}
+              <p className="mt-1 text-xs text-slate-600">{farmWeatherAdvisory}</p>
             </div>
           </CardContent>
         </Card>
@@ -741,6 +1004,15 @@ export default function FarmMap() {
                         <span className="text-[10px] font-bold text-white opacity-80 uppercase leading-none">{getZoneLabel(zone.id)}</span>
                         <span className="text-xs font-black text-white">{zone.soilMoisture}%</span>
                         <span className="text-[9px] text-white/80">{zone.id}</span>
+                        {(zone.decisions?.irrigation.action === "defer_for_rain" ||
+                          zone.decisions?.irrigation.action === "monitor_after_rain") && (
+                          <span
+                            title={zone.decisions.irrigation.reason}
+                            className="mt-1 rounded bg-white/20 px-1 text-[8px] font-bold uppercase tracking-wide text-white"
+                          >
+                            {zone.decisions.irrigation.action === "defer_for_rain" ? "Rain: defer" : "Rain: monitor"}
+                          </span>
+                        )}
                       </div>
 
                       {zone.status !== "healthy" && (
@@ -965,8 +1237,10 @@ export default function FarmMap() {
                     <p className="text-lg font-bold text-red-700">{sensorErrorCount}</p>
                   </div>
                   <div className="rounded border p-3">
-                    <p className="text-xs text-slate-500">Green VPD Zones</p>
-                    <p className="text-lg font-bold text-green-700">{greenVpdCount}</p>
+                    <p className="text-xs text-slate-500">Farm VPD</p>
+                    <p className={`text-lg font-bold ${farmVpdIsOptimal ? "text-green-700" : "text-amber-700"}`}>
+                      {displayClimate ? `${displayClimate.vpd.toFixed(2)} kPa` : "Unavailable"}
+                    </p>
                   </div>
                   <div className="rounded border p-3">
                     <p className="text-xs text-slate-500">Red Moisture Grids</p>
@@ -1068,12 +1342,12 @@ export default function FarmMap() {
                           <div className="font-bold uppercase">{selectedZone.cycleStatus || "idle"}</div>
                         </div>
                         <div className="rounded border p-2">
-                          <div className="text-slate-500">VPD</div>
+                          <div className="text-slate-500">Farm VPD</div>
                           <div className="font-bold uppercase">
-                            {typeof selectedZone.vpd === "number" ? selectedZone.vpd.toFixed(2) : "0.00"} ({selectedZone.vpdBand || "red"})
+                            {displayClimate ? `${displayClimate.vpd.toFixed(2)} kPa` : "Unavailable"} ({displayClimate?.vpdBand || "unavailable"})
                           </div>
                           <div className="mt-1 text-[10px] text-slate-500">
-                            {getVpdTimingEstimate(selectedZone)}
+                            {getFarmVpdStatus(displayClimate)}
                           </div>
                         </div>
                       </div>
@@ -1084,23 +1358,28 @@ export default function FarmMap() {
                         </p>
                       )}
 
-                      {!selectedZone.sprayEnabled && (
-                        <p className="text-xs font-medium text-amber-700">Hold spray until optimal VPD window</p>
+                      {!selectedZone.decisions?.spray.allowed && (
+                        <p className="text-xs font-medium text-amber-700">{selectedZone.decisions?.spray.reason || "Spray conditions are being assessed"}</p>
                       )}
+
+                      <div className="rounded-lg border border-sky-100 bg-sky-50/60 p-3 text-xs text-slate-700">
+                        <p className="font-bold text-sky-900">Irrigation decision: {getIrrigationActionLabel(selectedZone.decisions?.irrigation)}</p>
+                        <p className="mt-1">{selectedZone.decisions?.irrigation.reason || "Waiting for farm weather decision"}</p>
+                      </div>
 
                       <div className="flex items-center gap-3">
                         <Thermometer className="h-4 w-4 text-orange-600" />
                         <div className="flex-1">
-                          <p className="text-sm">Temperature</p>
-                          <p className="text-lg font-bold">{selectedZone.temperature}°C</p>
+                          <p className="text-sm">Farm Temperature</p>
+                          <p className="text-lg font-bold">{displayClimate ? `${displayClimate.temperature}°C` : "—"}</p>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-3">
                         <Wind className="h-4 w-4 text-green-600" />
                         <div className="flex-1">
-                          <p className="text-sm">Humidity</p>
-                          <p className="text-lg font-bold">{selectedZone.humidity}%</p>
+                          <p className="text-sm">Farm Humidity</p>
+                          <p className="text-lg font-bold">{displayClimate ? `${displayClimate.humidity}%` : "—"}</p>
                         </div>
                       </div>
                     </div>
@@ -1117,7 +1396,7 @@ export default function FarmMap() {
 
                           {(() => {
                             const confidence = mlData[selectedZone.id].confidence
-                            const humidity = selectedZone.humidity
+                            const humidity = displayClimate?.humidity ?? 0
                             const status = selectedZone.status
 
                             let spreadRisk = "Low"
@@ -1255,13 +1534,15 @@ export default function FarmMap() {
                       <Button
                         className={`w-full ${selectedZone.gridColor === "green"
                           ? "bg-slate-300 hover:bg-slate-300 text-slate-600 border-slate-300 cursor-not-allowed"
+                          : !selectedZone.decisions?.irrigation.allowsStart
+                            ? "bg-amber-100 hover:bg-amber-100 text-amber-800 border-amber-200 cursor-not-allowed"
                           : "bg-blue-600 hover:bg-blue-700 text-white"
                           }`}
                         variant={selectedZone.gridColor === "green" ? "outline" : "default"}
                         size="sm"
-                        disabled={isHydrating || selectedZone.gridColor === "green"}
+                        disabled={isHydrating || selectedZone.gridColor === "green" || !selectedZone.decisions?.irrigation.allowsStart}
                         onClick={async () => {
-                          if (!selectedZone || selectedZone.gridColor === "green") return
+                          if (!selectedZone || selectedZone.gridColor === "green" || !selectedZone.decisions?.irrigation.allowsStart) return
 
                           const confirmed = window.confirm(
                             `Hydrate ${getZoneLabel(selectedZone.id)}? This will start the timed irrigation cycle.`
@@ -1272,45 +1553,49 @@ export default function FarmMap() {
                           setIsHydrating(true)
 
                           try {
-                            await fetch("/api/hydrate", {
+                            const response = await fetch("/api/hydrate", {
                               method: "POST",
                               headers: { "Content-Type": "application/json" },
                               body: JSON.stringify({ zoneId: selectedZone.id }),
                             })
-
-                            const res = await fetch("/api/zones")
-                            const raw = await res.json()
-                            const zoneList: ZoneData[] = Array.isArray(raw) ? raw : raw.zones || []
-                            setFarmData(zoneList)
-
-                            const updatedZone = zoneList.find((z: ZoneData) => z.id === selectedZone.id)
-                            if (updatedZone) {
-                              setSelectedZone(updatedZone)
+                            if (!response.ok) {
+                              const result = await response.json().catch(() => ({}))
+                              window.alert(result?.message || "Hydration could not be started.")
                             }
+                            await fetchZones()
                           } finally {
                             setIsHydrating(false)
                           }
                         }}
                       >
                         <Droplets className="mr-2 h-4 w-4" />
-                        {isHydrating ? "Hydrating..." : selectedZone.gridColor === "green" ? "Hydrate Locked" : "Hydrate Zone"}
+                        {isHydrating ? "Hydrating..." : selectedZone.gridColor === "green" ? "Hydrate Locked" : getIrrigationActionLabel(selectedZone.decisions?.irrigation)}
                       </Button>
 
                       <Button
                         className={`w-full ${
-                          selectedZone.vpdBand === "green"
+                          selectedZone.decisions?.spray.allowed
                             ? "bg-green-600 hover:bg-green-700 text-white"
-                            : selectedZone.vpdBand === "orange"
+                            : selectedZone.decisions?.spray.requiresWeatherOverride
                               ? "bg-orange-500 hover:bg-orange-600 text-white"
                               : "bg-red-600 hover:bg-red-700 text-white"
                         }`}
                         size="sm"
-                        disabled={isSpraying}
+                        disabled={isSpraying || (!selectedZone.decisions?.spray.allowed && !selectedZone.decisions?.spray.requiresWeatherOverride)}
                         onClick={async () => {
                           if (!selectedZone) return
 
+                          const sprayDecision = selectedZone.decisions?.spray
+                          const weatherOverride = Boolean(sprayDecision?.requiresWeatherOverride && !sprayDecision.allowed)
+                          if (!sprayDecision?.allowed && !weatherOverride) {
+                            setSprayNotice(sprayDecision?.reason || "Spray conditions are not safe.")
+                            return
+                          }
+
                           const confirmed = window.confirm(
-                            `Spray ${getZoneLabel(selectedZone.id)}? VPD is advisory and you can override this recommendation.`
+                            weatherOverride
+                              ? `Forecast safety cannot be confirmed. Override the weather hold and spray ${getZoneLabel(selectedZone.id)}?`
+                              : `Spray ${getZoneLabel(selectedZone.id)}? Farm VPD and weather conditions are currently suitable.`
                           )
 
                           if (!confirmed) return
@@ -1318,26 +1603,19 @@ export default function FarmMap() {
                           setIsSpraying(true)
                           setSprayNotice(null)
 
-                          const response = await fetch("/api/spray", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ zoneId: selectedZone.id })
-                          })
+                          try {
+                            const response = await fetch("/api/spray", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ zoneId: selectedZone.id, weatherOverride })
+                            })
 
-                          const result = await response.json()
-                          setSprayNotice(result?.message || selectedZone.sprayMessage || null)
-
-                          const res = await fetch("/api/zones")
-                          const raw = await res.json()
-                          const zoneList: ZoneData[] = Array.isArray(raw) ? raw : raw.zones || []
-                          setFarmData(zoneList)
-
-                          const updatedZone = zoneList.find((z: ZoneData) => z.id === selectedZone.id)
-                          if (updatedZone) {
-                            setSelectedZone(updatedZone)
+                            const result = await response.json()
+                            setSprayNotice(result?.message || result?.decision?.spray?.reason || selectedZone.sprayMessage || null)
+                            await fetchZones()
+                          } finally {
+                            setIsSpraying(false)
                           }
-
-                          setIsSpraying(false)
                         }}
                       >
                         <Sprout className="mr-2 h-4 w-4" />
@@ -1345,7 +1623,7 @@ export default function FarmMap() {
                       </Button>
 
                       <p className="text-xs text-muted-foreground">
-                        {sprayNotice || selectedZone.sprayMessage || "VPD is advisory. You can override after confirmation."}
+                        {sprayNotice || selectedZone.decisions?.spray.reason || "Spray conditions are being assessed."}
                       </p>
                     </div>
                   </div>
@@ -1418,6 +1696,57 @@ export default function FarmMap() {
             </Card>
           </div>
         )}
+
+        <Dialog
+          open={isLocationDialogOpen}
+          onOpenChange={(open) => {
+            setIsLocationDialogOpen(open)
+            if (!open) setLocationError(null)
+          }}
+        >
+          <DialogContent className="max-w-xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <MapPin className="h-5 w-5 text-[#3a7d44]" />
+                Set your farm location
+              </DialogTitle>
+              <DialogDescription>
+                Allow location access or search for the farm. Bhoomitra will use these coordinates for the weather forecast, rain-aware irrigation, and spray safety checks.
+              </DialogDescription>
+            </DialogHeader>
+
+            <FarmLocationPicker
+              value={draftFarmLocation}
+              onChange={(location) => {
+                setDraftFarmLocation(location)
+                setLocationError(null)
+              }}
+              fallbackLabel="Current farm location"
+              disabled={isSavingLocation}
+            />
+
+            {locationError && <p className="text-sm font-medium text-red-600">{locationError}</p>}
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setIsLocationDialogOpen(false)}
+                disabled={isSavingLocation}
+              >
+                Set later
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSaveFarmLocation}
+                disabled={isSavingLocation || !draftFarmLocation}
+                className="bg-[#3a7d44] text-white hover:bg-[#2e6336]"
+              >
+                {isSavingLocation ? "Saving location..." : "Save farm location"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   )

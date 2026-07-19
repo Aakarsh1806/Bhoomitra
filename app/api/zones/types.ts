@@ -6,7 +6,7 @@ export type ZoneStatus =
 
 export type GridColor = "red" | "yellow" | "green"
 export type CycleState = "idle" | "running" | "cooldown" | "done" | "error"
-export type VpdBand = "green" | "orange" | "red"
+export type VpdBand = "green" | "orange" | "red" | "unavailable"
 
 export interface IrrigationCycleRuntime {
   active: boolean
@@ -34,6 +34,7 @@ export interface ZoneData {
   status: ZoneStatus
   lastSprayed: string
   soilMoisture: number
+  /** Legacy compatibility mirrors of the one fixed DHT11 farm station. */
   temperature: number
   humidity: number
   plantCount: number

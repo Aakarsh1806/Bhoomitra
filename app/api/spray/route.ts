@@ -6,9 +6,12 @@ import {
   hardwareState,
   updateHardwareState,
   recordActivity,
-  getSprayWindowStatus,
+  getFarmClimate,
+  irrigationSettings,
 } from "@/app/api/zones/data"
 import { readDB, writeDB } from "@/app/lib/database"
+import { getForecast } from "@/app/lib/weatherService"
+import { decideFarmActions } from "@/app/lib/farmDecisionService"
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
@@ -27,7 +30,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const body = await req.json()
-  const { zoneId, disease, chemical, dosage, detectionId } = body
+  const { zoneId, disease, chemical, dosage, detectionId, weatherOverride } = body
 
   if (hardwareState.killSwitchEngaged) {
     return NextResponse.json({ message: "Safety kill switch is engaged" }, { status: 423 })
@@ -38,12 +41,21 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: "Zone not found" }, { status: 404 })
   }
 
-  const sprayWindow = getSprayWindowStatus(zones[zoneIndex].temperature, zones[zoneIndex].humidity)
-  if (!sprayWindow.sprayEnabled) {
+  const weather = await getForecast()
+  const decision = decideFarmActions({
+    soilMoisture: zones[zoneIndex].soilMoisture,
+    dryThreshold: irrigationSettings.dryThreshold,
+    climate: getFarmClimate(),
+    weather,
+  })
+  const isExplicitWeatherOverride =
+    decision.spray.requiresWeatherOverride && weatherOverride === true
+
+  if (!decision.spray.allowed && !isExplicitWeatherOverride) {
     return NextResponse.json(
       {
-        message: "Hold spray until optimal VPD window",
-        sprayWindow,
+        message: decision.spray.reason,
+        decision,
       },
       { status: 409 }
     )
@@ -138,6 +150,7 @@ export async function POST(req: Request) {
       ? `Spray activated for zone ${zoneId} (no active detection linked)`
       : `Spray activated for zone ${zoneId}`,
     manualWithoutDetection,
-    sprayWindow,
+    decision,
+    weatherOverrideUsed: isExplicitWeatherOverride,
   })
 }

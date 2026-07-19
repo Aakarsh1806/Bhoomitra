@@ -4,7 +4,7 @@ import { readUsers } from "@/app/lib/usersStore"
 
 export async function POST(req: Request) {
   try {
-    const { phone, name } = await req.json()
+    const { phone, name, password } = await req.json()
     const normalized = normalizePhone(phone)
 
     if (!normalized) {
@@ -20,6 +20,13 @@ export async function POST(req: Request) {
     if (isNewUser && !String(name || "").trim()) {
       return NextResponse.json(
         { success: false, message: "Enter your name to create an account" },
+        { status: 400 }
+      )
+    }
+
+    if (isNewUser && String(password || "").length < 6) {
+      return NextResponse.json(
+        { success: false, message: "Create a password with at least 6 characters" },
         { status: 400 }
       )
     }

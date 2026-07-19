@@ -11,6 +11,14 @@ import {
 import fs from "fs"
 import path from "path"
 import { readDB, writeDB } from "@/app/lib/database"
+import {
+  FARM_DECISION_CONFIG,
+  buildFarmClimateSnapshot,
+  calculateAirVpd,
+  classifyVpd,
+  isValidClimateReading,
+  type FarmClimateSnapshot,
+} from "@/app/lib/farmDecisionService"
 
 const globalMemory = global as any
 
@@ -57,14 +65,35 @@ export type IrrigationSettings = {
 }
 
 export type SprayWindowStatus = {
-  vpd: number
+  vpd: number | null
   band: VpdBand
   message: string
   sprayEnabled: boolean
 }
 
+export type FarmClimatePresentation = {
+  source: "dht11" | "reference"
+  isLive: boolean
+  temperature: number
+  humidity: number
+  vpd: number
+  vpdBand: VpdBand
+  lastUpdatedAt: number | null
+  message: string
+}
+
+type FarmClimateRuntime = {
+  rawTemperature: number | null
+  rawHumidity: number | null
+  temperature: number | null
+  humidity: number | null
+  lastValidAt: number | null
+  sampleCount: number
+}
+
 const farmerProfilePath = path.join(process.cwd(), "app/data/farmer_profile.json")
 const irrigationSettingsPath = path.join(process.cwd(), "app/data/irrigation_settings.json")
+const farmClimatePath = path.join(process.cwd(), "app/data/farm_climate.json")
 
 const DEFAULT_SETTINGS: IrrigationSettings = {
   dryThreshold: 40,
@@ -77,6 +106,14 @@ const DEFAULT_SETTINGS: IrrigationSettings = {
   unchangedSensorMs: 30 * 60 * 1000,
   minChangePercent: 0.5,
 }
+
+// A calm, plausible calibration reference keeps the presentation useful before
+// hardware is connected. It is display-only: automation decisions still wait
+// for an actual fresh DHT11 payload.
+const PRESENTATION_CLIMATE_REFERENCE = {
+  temperature: 28,
+  humidity: 69,
+} as const
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
@@ -188,6 +225,68 @@ function createDefaultCycleRuntime(): IrrigationCycleRuntime {
   }
 }
 
+function createDefaultFarmClimate(): FarmClimateRuntime {
+  return {
+    rawTemperature: null,
+    rawHumidity: null,
+    temperature: null,
+    humidity: null,
+    lastValidAt: null,
+    sampleCount: 0,
+  }
+}
+
+type PersistedFarmClimate = {
+  version: 1
+  state: FarmClimateRuntime
+  samples: { temperature: number[]; humidity: number[] }
+}
+
+function readFarmClimateStore(): PersistedFarmClimate | null {
+  try {
+    if (!fs.existsSync(farmClimatePath)) return null
+    const parsed = JSON.parse(fs.readFileSync(farmClimatePath, "utf-8"))
+    const state = parsed?.state
+    const samples = parsed?.samples
+    if (!state || !samples || !Array.isArray(samples.temperature) || !Array.isArray(samples.humidity)) return null
+
+    return {
+      version: 1,
+      state: {
+        rawTemperature: Number.isFinite(state.rawTemperature) ? state.rawTemperature : null,
+        rawHumidity: Number.isFinite(state.rawHumidity) ? state.rawHumidity : null,
+        temperature: Number.isFinite(state.temperature) ? state.temperature : null,
+        humidity: Number.isFinite(state.humidity) ? state.humidity : null,
+        lastValidAt: Number.isFinite(state.lastValidAt) ? state.lastValidAt : null,
+        sampleCount: Math.max(0, Number(state.sampleCount) || 0),
+      },
+      samples: {
+        temperature: samples.temperature.filter((value: unknown) => Number.isFinite(value)),
+        humidity: samples.humidity.filter((value: unknown) => Number.isFinite(value)),
+      },
+    }
+  } catch {
+    return null
+  }
+}
+
+function writeFarmClimateStore(state: FarmClimateRuntime, samples: { temperature: number[]; humidity: number[] }) {
+  const payload: PersistedFarmClimate = {
+    version: 1,
+    state,
+    samples,
+  }
+  fs.writeFileSync(farmClimatePath, JSON.stringify(payload, null, 2), "utf-8")
+}
+
+function median(values: number[]) {
+  const sorted = [...values].sort((a, b) => a - b)
+  const middle = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle]
+}
+
 function generateZones(profile: FarmProfile, settings: IrrigationSettings): ZoneData[] {
   const zoneList: ZoneData[] = []
   const farmerProfile = readFarmerProfile()
@@ -209,12 +308,6 @@ function generateZones(profile: FarmProfile, settings: IrrigationSettings): Zone
     return 72
   }
 
-  const getInitialHumidity = (status: ZoneStatus) => {
-    if (status === "warning") return 81
-    if (status === "critical") return 91
-    return 68
-  }
-
   for (let i = 0; i < zoneCount; i++) {
     const row = Math.floor(i / profile.cols)
     const col = i % profile.cols
@@ -223,9 +316,12 @@ function generateZones(profile: FarmProfile, settings: IrrigationSettings): Zone
 
     const status = getInitialStatus(i)
     const moisture = getInitialSoilMoisture(status)
-    const humidity = getInitialHumidity(status)
-    const temperature = status === "critical" ? 29 : status === "warning" ? 26 : 23
-    const healthScore = calculateInitialHealthScore(moisture, humidity, temperature)
+    // The DHT11 is a single fixed farm-climate station, so zones do not get
+    // invented temperature/humidity readings at seed time. Climate stays
+    // unavailable until a real DHT11 report arrives.
+    const temperature = 0
+    const humidity = 0
+    const healthScore = calculateInitialHealthScore(moisture, 75, 26)
 
     zoneList.push({
       id,
@@ -270,25 +366,26 @@ function generateZoneHistory(zoneList: ZoneData[]): ZoneHistoryEntry[] {
 }
 
 export function calculateVPD(temperature: number, humidity: number) {
-  return ((100 - humidity) / 100) * (0.61078 * Math.exp((17.27 * temperature) / (temperature + 237.3)))
+  return calculateAirVpd(temperature, humidity)
 }
 
-export function getSprayWindowStatus(temperature: number, humidity: number): SprayWindowStatus {
-  const vpd = calculateVPD(temperature, humidity)
-  let band: VpdBand = "red"
-
-  if (vpd >= 0.8 && vpd <= 1.2) {
-    band = "green"
-  } else if (vpd >= 1.3 && vpd <= 1.9) {
-    band = "orange"
-  } else if (vpd < 0.4 || vpd > 2.0) {
-    band = "red"
+export function getSprayWindowStatus(temperature: number | null, humidity: number | null): SprayWindowStatus {
+  if (!isValidClimateReading(temperature, humidity)) {
+    return {
+      vpd: null,
+      band: "unavailable",
+      message: "Farm climate reading unavailable; VPD cannot clear spraying.",
+      sprayEnabled: false,
+    }
   }
+
+  const vpd = calculateVPD(temperature as number, humidity as number)
+  const band = classifyVpd(vpd)
 
   return {
     vpd: Number(vpd.toFixed(3)),
     band,
-    message: band === "red" ? "Hold spray until optimal VPD window" : band === "orange" ? "Spray with caution in current VPD range" : "Optimal spray window",
+    message: band === "red" ? "Farm VPD is outside the configured spray window" : band === "orange" ? "Farm VPD is marginal; use caution" : "Farm VPD is in the configured spray window",
     sprayEnabled: band === "green",
   }
 }
@@ -343,6 +440,120 @@ export function updateIrrigationSettings(partial: Partial<IrrigationSettings>) {
 
 export let farmProfile: FarmProfile = globalMemory.farmProfile || defaultProfile
 if (!globalMemory.farmProfile) globalMemory.farmProfile = farmProfile
+
+const persistedFarmClimate = readFarmClimateStore()
+export let farmClimate: FarmClimateRuntime = globalMemory.farmClimate || persistedFarmClimate?.state || createDefaultFarmClimate()
+if (!globalMemory.farmClimate) globalMemory.farmClimate = farmClimate
+
+let farmClimateSamples: { temperature: number[]; humidity: number[] } = globalMemory.farmClimateSamples || persistedFarmClimate?.samples || {
+  temperature: [],
+  humidity: [],
+}
+if (!globalMemory.farmClimateSamples) globalMemory.farmClimateSamples = farmClimateSamples
+
+function refreshFarmClimateFromDisk() {
+  const persisted = readFarmClimateStore()
+  if (!persisted) return
+
+  const persistedAt = persisted.state.lastValidAt || 0
+  const memoryAt = farmClimate.lastValidAt || 0
+  if (persistedAt >= memoryAt) {
+    farmClimate = persisted.state
+    farmClimateSamples = persisted.samples
+    globalMemory.farmClimate = farmClimate
+    globalMemory.farmClimateSamples = farmClimateSamples
+  }
+}
+
+export function getFarmClimate(now = Date.now()): FarmClimateSnapshot {
+  refreshFarmClimateFromDisk()
+  return buildFarmClimateSnapshot({
+    ...farmClimate,
+    now,
+  })
+}
+
+export function getFarmClimatePresentation(
+  climate: FarmClimateSnapshot = getFarmClimate(),
+): FarmClimatePresentation {
+  if (
+    climate.fresh &&
+    climate.temperature !== null &&
+    climate.humidity !== null &&
+    climate.vpd !== null
+  ) {
+    return {
+      source: "dht11",
+      isLive: true,
+      temperature: climate.temperature,
+      humidity: climate.humidity,
+      vpd: climate.vpd,
+      vpdBand: climate.vpdBand,
+      lastUpdatedAt: climate.lastValidAt,
+      message: "Live reading from the fixed DHT11 climate station.",
+    }
+  }
+
+  const vpd = Number(
+    calculateAirVpd(
+      PRESENTATION_CLIMATE_REFERENCE.temperature,
+      PRESENTATION_CLIMATE_REFERENCE.humidity,
+    ).toFixed(3),
+  )
+
+  return {
+    source: "reference",
+    isLive: false,
+    temperature: PRESENTATION_CLIMATE_REFERENCE.temperature,
+    humidity: PRESENTATION_CLIMATE_REFERENCE.humidity,
+    vpd,
+    vpdBand: classifyVpd(vpd),
+    lastUpdatedAt: null,
+    message: "Calibrated farm reference shown until the live DHT11 feed connects.",
+  }
+}
+
+/**
+ * Updates the one fixed DHT11 station. Soil moisture remains scoped to the
+ * incoming zone, but ambient temperature/humidity and VPD are farm-wide.
+ */
+export function updateFarmClimate(temperature: number, humidity: number) {
+  if (!isValidClimateReading(temperature, humidity)) {
+    return getFarmClimate()
+  }
+
+  refreshFarmClimateFromDisk()
+
+  const maxSamples = FARM_DECISION_CONFIG.dht11SmoothingWindow
+  farmClimateSamples.temperature.push(temperature)
+  farmClimateSamples.humidity.push(humidity)
+  while (farmClimateSamples.temperature.length > maxSamples) farmClimateSamples.temperature.shift()
+  while (farmClimateSamples.humidity.length > maxSamples) farmClimateSamples.humidity.shift()
+
+  const now = Date.now()
+  farmClimate = {
+    rawTemperature: temperature,
+    rawHumidity: humidity,
+    temperature: Number(median(farmClimateSamples.temperature).toFixed(1)),
+    humidity: Number(median(farmClimateSamples.humidity).toFixed(1)),
+    lastValidAt: now,
+    sampleCount: farmClimateSamples.temperature.length,
+  }
+  globalMemory.farmClimate = farmClimate
+  globalMemory.farmClimateSamples = farmClimateSamples
+  writeFarmClimateStore(farmClimate, farmClimateSamples)
+
+  // Compatibility fields are synchronized for older consumers. They are
+  // deliberately the same value for every zone because DHT11 is fixed.
+  zones = zones.map(zone => deriveZoneRuntime({
+    ...zone,
+    temperature: farmClimate.temperature ?? zone.temperature,
+    humidity: farmClimate.humidity ?? zone.humidity,
+  }))
+  globalMemory.zones = zones
+
+  return getFarmClimate(now)
+}
 
 export let zones: ZoneData[] = globalMemory.zones || generateZones(farmProfile, irrigationSettings)
 if (!globalMemory.zones) globalMemory.zones = zones
@@ -428,7 +639,11 @@ export function stopIrrigationCycle(zoneId: string, reason: string) {
   enqueueCommand(zoneId, "stop")
 }
 
-export function startIrrigationCycle(zoneId: string, targetByGlobalHydrate = false) {
+export function startIrrigationCycle(
+  zoneId: string,
+  targetByGlobalHydrate = false,
+  weatherGate?: { allowsStart: boolean; action: string; reason: string },
+) {
   const idx = zones.findIndex(z => z.id === zoneId)
   if (idx < 0) return { started: false, reason: "zone_not_found" }
 
@@ -436,6 +651,9 @@ export function startIrrigationCycle(zoneId: string, targetByGlobalHydrate = fal
   if (irrigationSettings.ripeningMode) return { started: false, reason: "ripening_mode" }
   if (zone.sensor?.hasError) return { started: false, reason: "sensor_error" }
   if ((zone.gridColor || "green") === "green") return { started: false, reason: "grid_green" }
+  if (weatherGate && !weatherGate.allowsStart) {
+    return { started: false, reason: weatherGate.action, message: weatherGate.reason }
+  }
 
   const now = Date.now()
   const nextCycle: IrrigationCycleRuntime = {
@@ -594,7 +812,10 @@ export function updateSensorRuntime(zoneId: string, moisture: number) {
 }
 
 function deriveZoneRuntime(zone: ZoneData): ZoneData {
-  const spray = getSprayWindowStatus(zone.temperature, zone.humidity)
+  const climate = getFarmClimate()
+  const spray = climate.fresh
+    ? getSprayWindowStatus(climate.temperature, climate.humidity)
+    : getSprayWindowStatus(null, null)
   const gridColor = getGridColorByMoisture(zone.soilMoisture, irrigationSettings)
   const hydrateEligible =
     !irrigationSettings.ripeningMode &&
@@ -609,7 +830,9 @@ function deriveZoneRuntime(zone: ZoneData): ZoneData {
     hydrateEligible,
     cycle: zone.cycle || createDefaultCycleRuntime(),
     sensor: zone.sensor || createDefaultSensorRuntime(),
-    vpd: spray.vpd,
+    temperature: climate.temperature ?? zone.temperature,
+    humidity: climate.humidity ?? zone.humidity,
+    vpd: spray.vpd ?? undefined,
     vpdBand: spray.band,
     sprayEnabled: spray.sprayEnabled,
     sprayMessage: spray.message,
@@ -644,17 +867,14 @@ export function updateLiveZones() {
     if (zone.status === "healthy") {
       zone.status = "warning"
       zone.soilMoisture = 35
-      zone.humidity = 82
       zone.healthScore = 65
     } else if (zone.status === "warning") {
       zone.status = "critical"
       zone.soilMoisture = 20
-      zone.humidity = 92
       zone.healthScore = 45
     } else {
       zone.status = "healthy"
       zone.soilMoisture = 70
-      zone.humidity = 65
       zone.healthScore = 90
     }
   }

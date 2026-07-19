@@ -29,5 +29,8 @@ next-env.d.ts
 backend*.log
 frontend*.log
 
+# Local runtime state from the fixed DHT11 station; never commit live readings.
+/app/data/farm_climate.json
+
 # claude code (local agent tooling & settings)
 .claude/

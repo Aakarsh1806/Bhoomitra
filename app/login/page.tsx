@@ -20,8 +20,11 @@ export default function LoginPage() {
 
   // Phone signup / sign-in
   const [phoneStep, setPhoneStep] = useState<"enter" | "verify">("enter")
+  const [phoneMode, setPhoneMode] = useState<"login" | "setup">("login")
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
+  const [phonePassword, setPhonePassword] = useState("")
+  const [confirmPhonePassword, setConfirmPhonePassword] = useState("")
   const [otp, setOtp] = useState("")
   const [demoOtp, setDemoOtp] = useState<string | null>(null)
   const [isNewUser, setIsNewUser] = useState(false)
@@ -75,13 +78,21 @@ export default function LoginPage() {
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (phonePassword.length < 6) {
+      toast.error("Create a password with at least 6 characters")
+      return
+    }
+    if (phonePassword !== confirmPhonePassword) {
+      toast.error("Passwords do not match")
+      return
+    }
     setLoading(true)
 
     try {
       const response = await fetch("/api/auth/otp/request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, name }),
+        body: JSON.stringify({ phone, name, password: phonePassword }),
       })
 
       const data = await response.json()
@@ -109,7 +120,7 @@ export default function LoginPage() {
       const response = await fetch("/api/auth/otp/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone, otp }),
+        body: JSON.stringify({ phone, otp, password: phonePassword }),
       })
 
       const data = await response.json()
@@ -128,31 +139,62 @@ export default function LoginPage() {
     }
   }
 
+  const handlePhoneLogin = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setLoading(true)
+
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ phone, password: phonePassword }),
+      })
+      const data = await response.json()
+
+      if (data.success) {
+        toast.success("Login successful!")
+        router.push("/home")
+        router.refresh()
+      } else {
+        toast.error(data.message || "Invalid phone number or password")
+      }
+    } catch {
+      toast.error("Something went wrong. Please try again.")
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const resetPhoneFlow = () => {
     setPhoneStep("enter")
     setOtp("")
     setDemoOtp(null)
   }
 
+  const switchPhoneMode = (mode: "login" | "setup") => {
+    setPhoneMode(mode)
+    resetPhoneFlow()
+  }
+
   return (
-    <div className="relative flex min-h-screen flex-col items-center bg-gradient-to-b from-white to-[#f5faf6] px-4 pt-16 pb-10 overflow-hidden">
-      <div className="w-full max-w-md transition-all duration-300 animate-fade-in-up">
-        <div className="flex flex-col items-center mb-6">
+    <div className="flex h-screen w-full flex-col items-center justify-center overflow-hidden bg-gradient-to-b from-white to-[#f5faf6] px-4 py-3">
+      <div className="flex w-full max-w-md flex-1 flex-col items-center justify-center py-2 transition-all duration-300 animate-fade-in-up min-h-0">
+        <div className="flex flex-col items-center mb-2 shrink-0">
           <Image
             src="/Bhoomitra-removebg-preview.png"
             alt="Bhoomitra"
             width={640}
             height={240}
             priority
-            className="h-auto w-[300px] sm:w-[350px]"
+            className="h-auto w-[190px] sm:w-[210px]"
           />
-          <p className="mt-1 text-sm text-gray-500">Smart Agriculture Management</p>
+          <p className="mt-0.5 text-xs text-gray-500">Smart Agriculture Management</p>
         </div>
 
-        <Card className="border-slate-200 shadow-lg shadow-slate-200/60 overflow-hidden bg-white rounded-2xl">
-          <CardHeader className="space-y-1 pb-3">
-            <CardTitle className="text-2xl text-[#1e3a23]">Welcome</CardTitle>
-            <CardDescription className="text-[#5a7a60]">
+        <Card className="w-full max-h-full overflow-y-auto border-slate-200 shadow-lg shadow-slate-200/60 bg-white rounded-2xl">
+          <CardHeader className="space-y-0.5 pb-2 pt-4">
+            <CardTitle className="text-xl text-[#1e3a23]">Welcome</CardTitle>
+            <CardDescription className="text-xs text-[#5a7a60]">
               Sign in to your account or create one with your phone number
             </CardDescription>
           </CardHeader>
@@ -171,9 +213,37 @@ export default function LoginPage() {
 
             {/* ---------------- PHONE TAB (signup + sign-in) ---------------- */}
             <TabsContent value="phone" className="mt-0">
-              {phoneStep === "enter" ? (
+              {phoneStep === "enter" && phoneMode === "login" ? (
+                <form onSubmit={handlePhoneLogin}>
+                  <CardContent className="space-y-3 pt-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="phone-login" className="text-[#1e3a23]">Mobile Number</Label>
+                      <div className="relative group">
+                        <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#5a7a60]" />
+                        <span className="absolute left-9 top-1/2 -translate-y-1/2 text-sm text-[#5a7a60]">+91</span>
+                        <Input id="phone-login" type="tel" inputMode="numeric" placeholder="98765 43210" className="pl-[4.5rem] border-[#d4e9c8]" value={phone} onChange={(e) => setPhone(e.target.value)} required disabled={loading} />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone-password" className="text-[#1e3a23]">Password</Label>
+                      <div className="relative group">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-[#5a7a60]" />
+                        <Input id="phone-password" type="password" placeholder="Your account password" className="pl-10 border-[#d4e9c8]" value={phonePassword} onChange={(e) => setPhonePassword(e.target.value)} required disabled={loading} />
+                      </div>
+                    </div>
+                  </CardContent>
+                  <CardFooter className="flex flex-col gap-2 pt-1">
+                    <Button type="submit" className="w-full bg-[#3a7d44] hover:bg-[#1e3a23] text-white h-10" disabled={loading}>
+                      {loading ? "Signing in..." : "Log in with phone"}
+                    </Button>
+                    <button type="button" onClick={() => switchPhoneMode("setup")} className="text-xs font-semibold text-[#3a7d44] hover:underline">
+                      New account or setting up a phone password
+                    </button>
+                  </CardFooter>
+                </form>
+              ) : phoneStep === "enter" ? (
                 <form onSubmit={handleSendOtp}>
-                  <CardContent className="space-y-4 pt-5">
+                  <CardContent className="space-y-3 pt-3">
                     <div className="space-y-2">
                       <Label htmlFor="name" className="text-[#1e3a23]">Full Name</Label>
                       <div className="relative group">
@@ -181,13 +251,21 @@ export default function LoginPage() {
                         <Input
                           id="name"
                           type="text"
-                          placeholder="Required for new accounts"
+                          placeholder="Your name"
                           className="pl-10 border-[#d4e9c8] focus-visible:ring-[#3a7d44]"
                           value={name}
                           onChange={(e) => setName(e.target.value)}
                           disabled={loading}
                         />
                       </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone-setup-password" className="text-[#1e3a23]">Create Password</Label>
+                      <Input id="phone-setup-password" type="password" placeholder="At least 6 characters" className="border-[#d4e9c8]" value={phonePassword} onChange={(e) => setPhonePassword(e.target.value)} required disabled={loading} />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="phone-setup-confirm" className="text-[#1e3a23]">Confirm Password</Label>
+                      <Input id="phone-setup-confirm" type="password" placeholder="Repeat your password" className="border-[#d4e9c8]" value={confirmPhonePassword} onChange={(e) => setConfirmPhonePassword(e.target.value)} required disabled={loading} />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="phone" className="text-[#1e3a23]">Mobile Number</Label>
@@ -208,7 +286,10 @@ export default function LoginPage() {
                       </div>
                     </div>
                   </CardContent>
-                  <CardFooter className="flex flex-col gap-4 pt-2">
+                  <CardFooter className="flex flex-col gap-2 pt-1">
+                    <button type="button" onClick={() => switchPhoneMode("login")} className="text-xs font-semibold text-[#3a7d44] hover:underline">
+                      Back to phone login
+                    </button>
                     <Button
                       type="submit"
                       className="w-full bg-[#3a7d44] hover:bg-[#1e3a23] text-white shadow-md shadow-green-900/10 transition-all duration-200 h-10"
@@ -227,7 +308,7 @@ export default function LoginPage() {
                 </form>
               ) : (
                 <form onSubmit={handleVerifyOtp}>
-                  <CardContent className="space-y-4 pt-5">
+                  <CardContent className="space-y-3 pt-3">
                     <button
                       type="button"
                       onClick={resetPhoneFlow}
@@ -265,7 +346,7 @@ export default function LoginPage() {
                       </div>
                     </div>
                   </CardContent>
-                  <CardFooter className="flex flex-col gap-4 pt-2">
+                  <CardFooter className="flex flex-col gap-2 pt-1">
                     <Button
                       type="submit"
                       className="w-full bg-[#3a7d44] hover:bg-[#1e3a23] text-white shadow-md shadow-green-900/10 transition-all duration-200 h-10"
@@ -290,7 +371,7 @@ export default function LoginPage() {
             {/* ---------------- EMAIL TAB (existing accounts) ---------------- */}
             <TabsContent value="email" className="mt-0">
               <form onSubmit={handleSubmit}>
-                <CardContent className="space-y-4 pt-5">
+                <CardContent className="space-y-3 pt-3">
                   <div className="space-y-2">
                     <Label htmlFor="email" className="text-[#1e3a23]">Email Address</Label>
                     <div className="relative group">
@@ -323,7 +404,7 @@ export default function LoginPage() {
                     </div>
                   </div>
                 </CardContent>
-                <CardFooter className="flex flex-col gap-4 pt-2">
+                <CardFooter className="flex flex-col gap-2 pt-1">
                   <Button
                     type="submit"
                     className="w-full bg-[#3a7d44] hover:bg-[#1e3a23] text-white shadow-md shadow-green-900/10 transition-all duration-200 h-10"
@@ -343,7 +424,7 @@ export default function LoginPage() {
             </TabsContent>
           </Tabs>
 
-          <div className="px-6 pb-6 space-y-4">
+          <div className="px-6 pb-4 space-y-2">
             <div className="flex items-center gap-2 w-full">
               <div className="h-[1px] bg-slate-200 flex-1"></div>
               <span className="text-[10px] uppercase font-bold text-slate-400">or</span>
@@ -354,13 +435,13 @@ export default function LoginPage() {
               type="button"
               variant="outline"
               onClick={handleGuestLogin}
-              className="w-full border-green-200 text-[#3a7d44] hover:bg-green-50 h-10 transition-all font-semibold"
+              className="w-full border-green-200 text-[#3a7d44] hover:bg-green-50 h-9 transition-all font-semibold"
               disabled={loading}
             >
               Skip for now (Guest Mode)
             </Button>
 
-            <p className="text-xs text-center text-[#5a7a60]">
+            <p className="text-[11px] text-center text-[#5a7a60]">
               Your account details are stored securely and used only within Bhoomitra.
             </p>
           </div>

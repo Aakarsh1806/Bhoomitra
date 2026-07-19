@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useFarmStore } from "@/store/farmStore"
 import { useTranslation } from "@/lib/use-translation"
+import WeatherStrip from "@/components/weather-strip"
 import { 
   Activity, 
   AlertCircle, 
@@ -46,6 +47,9 @@ export default function DashboardHome() {
           AI System Online
         </div>
       </div>
+
+      {/* Live weather + agronomic signals for the saved farm location */}
+      <WeatherStrip />
 
       <div className="grid md:grid-cols-4 gap-6">
 

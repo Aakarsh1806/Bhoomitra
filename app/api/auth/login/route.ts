@@ -2,16 +2,28 @@ import { NextResponse } from "next/server"
 import { cookies } from "next/headers"
 import { compareSync, hashSync } from "bcryptjs"
 import { isPasswordHash, readUsers, writeUsers } from "@/app/lib/usersStore"
+import { isBlockedStatus } from "@/app/lib/session"
+import { normalizePhone } from "@/app/lib/otpStore"
 
 export async function POST(req: Request) {
   try {
-    const { email, password } = await req.json()
+    const { email, phone, password } = await req.json()
     const users = readUsers()
-    const userIndex = users.findIndex((u: any) => u.email === email)
+    const normalizedPhone = phone ? normalizePhone(phone) : null
+    const userIndex = users.findIndex((u: any) =>
+      email ? u.email === email : normalizedPhone && u.phone === normalizedPhone
+    )
     const user = userIndex >= 0 ? users[userIndex] : null
 
     if (!user || !user.password) {
       return NextResponse.json({ success: false, message: "Invalid credentials" }, { status: 401 })
+    }
+
+    if (isBlockedStatus(user.status)) {
+      return NextResponse.json(
+        { success: false, message: "This account has been blocked. Contact an administrator." },
+        { status: 403 }
+      )
     }
 
     let isValidPassword = false
@@ -40,6 +52,7 @@ export async function POST(req: Request) {
         id: users[userIndex].id,
         name: users[userIndex].name,
         email: users[userIndex].email,
+        phone: users[userIndex].phone,
         role: users[userIndex].role,
         permissions: users[userIndex].permissions,
         iat: Date.now(),

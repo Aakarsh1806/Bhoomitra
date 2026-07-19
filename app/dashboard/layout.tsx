@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { useTranslation } from "@/lib/use-translation"
 import { useNavigation } from "@/lib/navigation-context"
@@ -18,7 +18,15 @@ import {
     History,
     LogOut,
     Shield,
+    UserCircle,
 } from "lucide-react"
+
+type NavItem = {
+    name: string
+    href: string
+    icon: any
+    adminOnly?: boolean
+}
 
 export default function DashboardLayout({
     children,
@@ -29,8 +37,36 @@ export default function DashboardLayout({
     const router = useRouter()
     const t = useTranslation()
     const { setIsLoading } = useNavigation()
+    const [role, setRole] = useState<string | null>(null)
+    const [checked, setChecked] = useState(false)
 
-    const navItems = [
+    // Resolve the live account (role + block status). If the account was
+    // blocked/removed while the session was open, bounce back to login.
+    useEffect(() => {
+        let active = true
+        fetch("/api/auth/me")
+            .then(async (res) => {
+                const data = await res.json().catch(() => ({}))
+                if (!active) return
+                if (!res.ok || !data?.success) {
+                    if (data?.blocked) {
+                        toast.error(data.message || "Your access has been revoked.")
+                    }
+                    router.replace("/login")
+                    return
+                }
+                setRole(data.user?.role ?? null)
+                setChecked(true)
+            })
+            .catch(() => {
+                if (active) setChecked(true)
+            })
+        return () => {
+            active = false
+        }
+    }, [router])
+
+    const allNavItems: NavItem[] = [
         { name: t("nav.dashboard"), href: "/dashboard", icon: Home },
         { name: t("nav.autospray"), href: "/dashboard/autospray", icon: SprayCan },
         { name: t("nav.map"), href: "/dashboard/map", icon: Map },
@@ -39,26 +75,17 @@ export default function DashboardLayout({
         { name: t("nav.recommendations"), href: "/dashboard/recommendations", icon: Brain },
         { name: "Spread Control AI", href: "/dashboard/spread-control", icon: Shield },
         { name: "Activity", href: "/dashboard/history", icon: History },
-        { name: "Users", href: "/dashboard/users", icon: Users },
+        { name: "User Management", href: "/dashboard/users", icon: Users, adminOnly: true },
         { name: "About", href: "/dashboard/about", icon: Info },
+        { name: "My Account", href: "/dashboard/account", icon: UserCircle },
     ]
 
-    useEffect(() => {
-        const routesToPrefetch = [
-            "/dashboard",
-            "/dashboard/autospray",
-            "/dashboard/map",
-            "/dashboard/detection",
-            "/dashboard/analytics",
-            "/dashboard/recommendations",
-            "/dashboard/spread-control",
-            "/dashboard/history",
-            "/dashboard/users",
-            "/dashboard/about",
-        ]
+    const navItems = allNavItems.filter((item) => !item.adminOnly || role === "admin")
 
-        routesToPrefetch.forEach((route) => router.prefetch(route))
-    }, [router])
+    useEffect(() => {
+        allNavItems.forEach((item) => router.prefetch(item.href))
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [router, role])
 
     const handleLogout = async () => {
         try {
@@ -75,9 +102,9 @@ export default function DashboardLayout({
         <div className="flex min-h-screen bg-gradient-to-br from-[#f4fbf6] via-[#eef9f2] to-[#e6f6ec]">
 
             {/* ===== SIDEBAR ===== */}
-            <aside className="fixed left-0 top-0 h-screen w-20 hover:w-72 bg-white shadow-2xl border-r border-green-100 p-4 transition-all duration-500 ease-in-out z-50 group flex flex-col items-center hover:items-start overflow-hidden">
+            <aside className="fixed left-0 top-0 h-screen w-20 hover:w-72 bg-white shadow-2xl border-r border-green-100 transition-all duration-500 ease-in-out z-50 group flex flex-col overflow-hidden">
 
-                <div className="mb-10 mt-4 flex items-center justify-center w-full group-hover:justify-start px-2">
+                <div className="mb-6 mt-6 flex items-center justify-center w-full group-hover:justify-start px-6 shrink-0">
                     <h1 className="text-2xl font-bold text-green-700 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">
                         Bhoomitra
                     </h1>
@@ -86,7 +113,8 @@ export default function DashboardLayout({
                     </div>
                 </div>
 
-                <nav className="space-y-4 w-full flex-1">
+                {/* Scrollable nav area — guarantees every item is reachable on any screen height */}
+                <nav className="flex-1 min-h-0 overflow-y-auto space-y-2 w-full px-4 py-2 scrollbar-thin scrollbar-thumb-green-100">
                     {navItems.map((item) => {
                         const Icon = item.icon
                         const isActive = pathname === item.href
@@ -116,10 +144,13 @@ export default function DashboardLayout({
                             </Link>
                         )
                     })}
+                </nav>
 
+                {/* Logout pinned at the bottom, always visible */}
+                <div className="shrink-0 px-4 py-4 border-t border-green-50">
                     <button
                         onClick={handleLogout}
-                        className="flex items-center gap-4 px-4 py-3 rounded-2xl w-full transition-all duration-300 text-red-700 hover:bg-red-50 hover:shadow-md mt-auto"
+                        className="flex items-center gap-4 px-4 py-3 rounded-2xl w-full transition-all duration-300 text-red-700 hover:bg-red-50 hover:shadow-md"
                     >
                         <div className="min-w-[1.25rem] flex items-center justify-center">
                             <LogOut size={22} />
@@ -128,7 +159,7 @@ export default function DashboardLayout({
                             {t("nav.logout")}
                         </span>
                     </button>
-                </nav>
+                </div>
             </aside>
 
             {/* ===== MAIN CONTENT ===== */}

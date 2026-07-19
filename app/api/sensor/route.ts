@@ -8,10 +8,14 @@ import {
   recordActivity,
   markSensorError,
   updateSensorRuntime,
+  updateFarmClimate,
+  getFarmClimate,
   startIrrigationCycle,
   tickIrrigationCycle,
   irrigationSettings,
 } from "../zones/data"
+import { getForecast } from "@/app/lib/weatherService"
+import { decideFarmActions } from "@/app/lib/farmDecisionService"
 
 export async function POST(req: Request) {
   const body = await req.json()
@@ -44,7 +48,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: "Zone not found" }, { status: 404 })
   }
 
-  const currentZone = zones[zoneIndex]
   const moistureNum = Number(soilMoisture)
   const tempNum = Number(temperature)
   const humidityNum = Number(humidity)
@@ -70,12 +73,16 @@ export async function POST(req: Request) {
   const nextTemperature = tempNum
   const nextHumidity = humidityNum
 
+  // DHT11 is fixed at one farm location. Its values update shared farm
+  // climate/VPD, while the moisture reading remains scoped to this zone.
+  const climate = updateFarmClimate(nextTemperature, nextHumidity)
+
   // Calculate status
   let status: "healthy" | "warning" | "critical"
 
-  if (nextSoilMoisture < 25 || nextHumidity > 90) {
+  if (nextSoilMoisture < 25) {
     status = "critical"
-  } else if (nextSoilMoisture < 40 || nextHumidity > 80) {
+  } else if (nextSoilMoisture < 40) {
     status = "warning"
   } else {
     status = "healthy"
@@ -89,16 +96,22 @@ export async function POST(req: Request) {
   zones[zoneIndex] = {
     ...zones[zoneIndex],
     soilMoisture: nextSoilMoisture,
-    temperature: nextTemperature,
-    humidity: nextHumidity,
     status,
     healthScore,
   }
 
   updateSensorRuntime(zoneId, nextSoilMoisture)
 
+  const weather = await getForecast()
+  const farmDecision = decideFarmActions({
+    soilMoisture: nextSoilMoisture,
+    dryThreshold: irrigationSettings.dryThreshold,
+    climate: getFarmClimate(),
+    weather,
+  })
+
   if (nextSoilMoisture < irrigationSettings.dryThreshold) {
-    startIrrigationCycle(zoneId)
+    startIrrigationCycle(zoneId, false, farmDecision.irrigation)
   }
 
   tickIrrigationCycle(zoneId)
@@ -108,7 +121,7 @@ const historyEntry = zoneHistory.find(h => h.zoneId === zoneId)
 
 if (historyEntry) {
   historyEntry.moistureHistory.push(nextSoilMoisture)
-  historyEntry.temperatureHistory.push(nextTemperature)
+  historyEntry.temperatureHistory.push(climate.temperature ?? nextTemperature)
 
   if (historyEntry.moistureHistory.length > 20) {
     historyEntry.moistureHistory.shift()
@@ -146,7 +159,8 @@ if (historyEntry) {
     message: "Zone updated successfully",
     command,
     targetZone: zoneId,
-    remainingQueue: commandQueue.length
+    remainingQueue: commandQueue.length,
+    farmClimate: getFarmClimate(),
+    decision: farmDecision,
   })
 }
-

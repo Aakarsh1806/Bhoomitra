@@ -1,5 +1,15 @@
 import { NextResponse } from "next/server"
-import { hardwareState, updateHardwareState, recordActivity, startIrrigationCycle } from "../zones/data"
+import {
+  hardwareState,
+  updateHardwareState,
+  recordActivity,
+  startIrrigationCycle,
+  zones,
+  irrigationSettings,
+  getFarmClimate,
+} from "../zones/data"
+import { getForecast } from "@/app/lib/weatherService"
+import { decideFarmActions } from "@/app/lib/farmDecisionService"
 
 export async function POST(req: Request) {
   const { zoneId } = await req.json()
@@ -12,9 +22,25 @@ export async function POST(req: Request) {
     return NextResponse.json({ message: "Zone ID is required" }, { status: 400 })
   }
 
-  const start = startIrrigationCycle(zoneId)
+  const zone = zones.find(item => item.id === zoneId)
+  if (!zone) {
+    return NextResponse.json({ message: "Zone not found" }, { status: 404 })
+  }
+
+  const weather = await getForecast()
+  const decision = decideFarmActions({
+    soilMoisture: zone.soilMoisture,
+    dryThreshold: irrigationSettings.dryThreshold,
+    climate: getFarmClimate(),
+    weather,
+  })
+
+  const start = startIrrigationCycle(zoneId, false, decision.irrigation)
   if (!start.started) {
-    return NextResponse.json({ message: `Hydration skipped for ${zoneId}: ${start.reason}` }, { status: 409 })
+    return NextResponse.json(
+      { message: decision.irrigation.reason || `Hydration skipped for ${zoneId}: ${start.reason}`, decision },
+      { status: 409 },
+    )
   }
 
   updateHardwareState({
@@ -30,5 +56,5 @@ export async function POST(req: Request) {
   // Log the activity
   recordActivity({ type: "water", zoneId })
 
-  return NextResponse.json({ message: `Hydration cycle started for zone ${zoneId}` })
+  return NextResponse.json({ message: `Hydration cycle started for zone ${zoneId}`, decision })
 }
