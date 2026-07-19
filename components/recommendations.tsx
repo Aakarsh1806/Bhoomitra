@@ -1,6 +1,6 @@
-﻿"use client"
+"use client"
 
-import { useState, useMemo, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useFarmStore } from "@/store/farmStore"
 import {
   Dialog,
@@ -8,7 +8,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -17,8 +16,6 @@ import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import {
   Brain,
@@ -29,241 +26,347 @@ import {
   TrendingUp,
   Droplets,
   MapPin,
-  Calendar,
-  ThermometerSun,
+  CloudRain,
   Wind,
   Target,
   Zap,
   X,
   Check,
-  FlaskConical
+  Loader2,
+  RefreshCw,
+  Bug,
+  Gauge,
 } from "lucide-react"
 
-interface Recommendation {
+interface ApiRec {
   id: string
+  kind: "treatment" | "irrigation" | "preventive"
+  severity: "low" | "moderate" | "high"
+  priority: "high" | "medium" | "low"
   type: "urgent" | "important" | "suggestion" | "optimization"
-  category: "spraying" | "prevention" | "maintenance" | "optimization"
+  zone: string
   title: string
   description: string
-  zone?: string
-  priority: "high" | "medium" | "low"
   confidence: number
+  confidenceBasis: string
+  action: string
+  timing: string
   estimatedImpact: string
-  timeframe: string
-  reasoning: string
-  actions: string[]
-  dismissed?: boolean
-  implemented?: boolean
+  reasoning: string[]
+  weatherGated: boolean
+  decisionAction: string
+  detectionId?: string
+  chemical?: string
+  dosage?: string
+  disease?: string
 }
 
-const getReasoning = (plantType: string, diseaseName: string) => {
-  const reasonings: Record<string, string> = {
-    "Apple": "High humidity often correlates with scab progression in pome fruits. Biological sensors indicate rapid spore release.",
-    "Corn (maize)": "Recent rainfall and warm temperatures exceed the threshold for common rust incubation in grain crops.",
-    "Grape": "Micro-climate analysis shows persistent leaf wetness, increasing susceptibility to fungal pathogens like powdery mildew.",
-    "Potato": "Soil moisture levels and cool nights provide ideal conditions for blight development in root crops.",
-    "Tomato": "High UV exposure combined with early morning dew is stressing plant cuticles, allowing for pathogen penetration.",
-    "default": "Atmospheric sensors indicate optimal temperature and humidity for pathogen proliferation. Early intervention helps maintain crop yield."
-  };
-  return reasonings[plantType] || reasonings["default"];
-};
+interface Insights {
+  activeCount: number
+  treatedCount: number
+  resolvedCount: number
+  totalDetections: number
+  totalSprays: number
+  avgDetectionConfidence: number | null
+  containmentRate: number | null
+  weatherAwareDecisions: number
+}
 
-const getImpact = (severity: string) => {
-  switch (severity) {
-    case "High": return "Prevent 15-20% yield loss";
-    case "Moderate": return "Prevent 5-10% yield loss";
-    case "Low": return "Prevent minor foliage damage";
-    default: return "Maintain plant health";
-  }
-};
+interface Ctx {
+  weatherSource: "live" | "cached" | "fallback"
+  weatherUsable: boolean
+  fungalPressure: { score: number; band: "low" | "moderate" | "high"; drivers: string[] }
+  sprayWindow: { safeNow: boolean; nextSafeInHours: number | null; reason: string }
+  climateLive: boolean
+  location: string
+  locationConfigured: boolean
+}
+
+const typeColor = (type: string) =>
+  type === "urgent"
+    ? "text-red-600 bg-red-50"
+    : type === "important"
+      ? "text-orange-600 bg-orange-50"
+      : type === "optimization"
+        ? "text-blue-600 bg-blue-50"
+        : "text-green-600 bg-green-50"
+
+const typeIcon = (type: string) =>
+  type === "urgent" ? (
+    <AlertTriangle className="h-4 w-4" />
+  ) : type === "important" ? (
+    <Clock className="h-4 w-4" />
+  ) : type === "optimization" ? (
+    <TrendingUp className="h-4 w-4" />
+  ) : (
+    <Lightbulb className="h-4 w-4" />
+  )
+
+const priorityVariant = (p: string) => (p === "high" ? "destructive" : p === "medium" ? "secondary" : "outline")
 
 export default function Recommendations() {
-  const { 
-    detections, 
-    removeDetection, 
-    implementedRecords, 
-    addImplementationRecord, 
-    clearImplementationRecords,
-    addDetection 
-  } = useFarmStore()
-  const [isHydrated, setIsHydrated] = useState(false)
-  const [autoRecommendations, setAutoRecommendations] = useState(true)
-  const [notifications, setNotifications] = useState(true)
-  const [selectedRec, setSelectedRec] = useState<Recommendation | null>(null)
+  const { implementedRecords, addImplementationRecord, clearImplementationRecords } = useFarmStore()
+  const [data, setData] = useState<{ recommendations: ApiRec[]; insights: Insights; context: Ctx } | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [implementing, setImplementing] = useState<string | null>(null)
+  const [selectedRec, setSelectedRec] = useState<ApiRec | null>(null)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
 
-  useEffect(() => {
-    setIsHydrated(true)
+  const load = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true)
+    try {
+      const res = await fetch("/api/recommendations")
+      const d = await res.json()
+      setData(d)
+    } catch {
+      toast.error("Could not load recommendations")
+    } finally {
+      setLoading(false)
+      setRefreshing(false)
+    }
   }, [])
 
-  const handleCreateDemo = () => {
-    addDetection({
-      plantType: "Tomato",
-      diseaseName: "Early Blight",
-      severity: "High",
-      infectedZoneId: "A1",
-      pesticideName: "Mancozeb",
-      pesticideCategory: "Fungicide",
-      dosagePerLiter: 2.0,
-      coveragePerLiter: 200,
-      sprayInterval: "10 days",
-      preHarvestDays: 3,
-      createdAt: Date.now()
-    })
-    toast.success("Demo recommendation created for Zone A1")
-  }
+  useEffect(() => {
+    load()
+  }, [load])
 
-  const handleImplement = (rec: Recommendation) => {
-    if (!rec.id) return
+  const recommendations = data?.recommendations || []
+  const insights = data?.insights
+  const context = data?.context
 
-    const isAlreadyImplemented = implementedRecords.some(r => r.id === rec.id)
-    
-    if (isAlreadyImplemented) {
-      toast.info("Already Implemented", {
-        description: `The action for "${rec.title}" is already in your implementation history.`,
-      })
-      return
-    }
+  const urgent = recommendations.filter((r) => r.type === "urgent")
+  const urgentCount = urgent.length
+  const importantCount = recommendations.filter((r) => r.type === "important").length
 
-    addImplementationRecord({
-      id: rec.id,
-      title: rec.title,
-      description: rec.description,
-      timestamp: new Date().toISOString(),
-      zone: rec.zone,
-      impact: rec.estimatedImpact
-    })
+  const implement = async (rec: ApiRec) => {
+    setImplementing(rec.id)
+    try {
+      const res =
+        rec.kind === "treatment"
+          ? await fetch("/api/spray", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                zoneId: rec.zone,
+                detectionId: rec.detectionId,
+                disease: rec.disease,
+                chemical: rec.chemical,
+                dosage: rec.dosage,
+              }),
+            })
+          : await fetch("/api/hydrate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ zoneId: rec.zone }),
+            })
 
-    if (rec.id && !rec.id.startsWith("rec-static")) {
-      removeDetection(rec.id)
-    }
+      const result = await res.json().catch(() => ({}))
 
-    toast.success("Implementation started!", {
-      description: `Action plan for ${rec.title} has been deployed.`,
-    })
-  }
-
-  const handleDismiss = (id: string) => {
-    if (!id) return
-    if (id.startsWith("rec-static")) {
-       toast.info("Static recommendation dismissed for this session")
-       return;
-    }
-    removeDetection(id)
-    toast.success("Recommendation dismissed")
-  }
-
-  const dynamicRecommendations = useMemo(() => {
-    return detections
-      .filter(det => det.infectedZoneId)
-      .map((det): Recommendation => ({
-        id: det.infectedZoneId, 
-        type: det.severity === "High" ? "urgent" : "important",
-        category: "spraying",
-        title: `${det.severity} Alert: ${det.diseaseName} in Zone ${det.infectedZoneId}`,
-        description: `${det.diseaseName} detected on ${det.plantType}. Environmental conditions favor progression.`,
-        zone: det.infectedZoneId,
-        priority: det.severity.toLowerCase() as any,
-        confidence: 85 + Math.floor(Math.random() * 10),
-        estimatedImpact: getImpact(det.severity),
-        timeframe: det.severity === "High" ? "Immediate action" : "Within 12 hours",
-        reasoning: getReasoning(det.plantType, det.diseaseName),
-        actions: [
-          `Apply ${det.pesticideName} (${det.pesticideCategory})`,
-          "Monitor adjacent zones for spread",
-          "Adjust irrigation to reduce foliage wetness"
-        ]
-      }))
-  }, [detections])
-
-  const recommendations = useMemo(() => {
-    if (!isHydrated) return []
-
-    const staticRecs: Recommendation[] = [
-      {
-        id: "rec-static-1",
-        type: "optimization",
-        category: "optimization",
-        title: "Optimize Spraying Schedule",
-        description: "Adjust spraying times to early morning (5-7 AM) for better pesticide effectiveness.",
-        priority: "medium",
-        confidence: 91,
-        estimatedImpact: "20-25% pesticide savings",
-        timeframe: "Implement gradually",
-        reasoning: "Wind speed analysis shows optimal conditions during early morning hours. Reduced evaporation achieves better coverage.",
-        actions: ["Update equipment timers", "Adjust treatment logs"]
+      if (res.ok) {
+        addImplementationRecord({
+          id: rec.id,
+          title: rec.title,
+          description: rec.action,
+          timestamp: new Date().toISOString(),
+          zone: rec.zone,
+          impact: rec.estimatedImpact,
+        })
+        toast.success(rec.kind === "treatment" ? `Spray command dispatched to ${rec.zone}` : `Irrigation started on ${rec.zone}`)
+        setIsDetailsOpen(false)
+        await load(true)
+      } else if (res.status === 409) {
+        // The decision engine held the action — surface the honest reason.
+        const reason = result?.decision?.spray?.reason || result?.decision?.irrigation?.reason || result?.message
+        toast.warning("Held by the decision engine", { description: reason || "Conditions are not suitable yet." })
+      } else if (res.status === 423) {
+        toast.error("Safety kill switch is engaged")
+      } else {
+        toast.error(result?.message || "Action could not be completed")
       }
-    ]
-
-    const allRecs = [...dynamicRecommendations, ...staticRecs]
-    return allRecs.filter(rec => rec.id && !implementedRecords.some(r => r.id === rec.id))
-  }, [dynamicRecommendations, implementedRecords, isHydrated])
-
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case "urgent": return "text-red-600 bg-red-50 dark:bg-red-950"
-      case "important": return "text-orange-600 bg-orange-50 dark:bg-orange-950"
-      case "optimization": return "text-blue-600 bg-blue-50 dark:bg-blue-950"
-      case "suggestion": return "text-green-600 bg-green-50 dark:bg-green-950"
-      default: return "text-gray-600 bg-gray-50 dark:bg-gray-950"
+    } catch {
+      toast.error("Something went wrong")
+    } finally {
+      setImplementing(null)
     }
   }
 
-  const getTypeIcon = (type: string) => {
-    switch (type) {
-      case "urgent": return <AlertTriangle className="h-4 w-4" />
-      case "important": return <Clock className="h-4 w-4" />
-      case "optimization": return <TrendingUp className="h-4 w-4" />
-      case "suggestion": return <Lightbulb className="h-4 w-4" />
-      default: return <Brain className="h-4 w-4" />
-    }
+  if (loading) {
+    return (
+      <div className="flex min-h-[400px] flex-col items-center justify-center gap-4">
+        <Loader2 className="h-8 w-8 animate-spin text-green-600" />
+        <p className="animate-pulse text-muted-foreground">Fusing detections, sensors, and forecast…</p>
+      </div>
+    )
   }
 
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "high": return "destructive"
-      case "medium": return "secondary"
-      case "low": return "outline"
-      default: return "outline"
-    }
-  }
+  const pressureTone =
+    context?.fungalPressure.band === "high"
+      ? "text-red-600"
+      : context?.fungalPressure.band === "moderate"
+        ? "text-amber-600"
+        : "text-green-600"
 
-  const urgentCount = recommendations.filter((rec) => rec.type === "urgent").length;
-  const importantCount = recommendations.filter((rec) => rec.type === "important").length;
+  const renderCard = (rec: ApiRec) => (
+    <Card key={rec.id} className="relative shadow-sm transition-all duration-300 hover:shadow-md">
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className={`rounded-lg p-2 ${typeColor(rec.type)}`}>{typeIcon(rec.type)}</div>
+            <div className="flex-1">
+              <div className="mb-1 flex flex-wrap items-center gap-2">
+                <CardTitle className="text-lg text-[#1a2e1d]">{rec.title}</CardTitle>
+                <Badge variant={priorityVariant(rec.priority) as any} className="capitalize">
+                  {rec.priority}
+                </Badge>
+                <Badge variant="outline" className="text-xs">
+                  <MapPin className="mr-1 h-3 w-3" />
+                  {rec.zone}
+                </Badge>
+                {rec.weatherGated && (
+                  <Badge variant="outline" className="border-amber-300 bg-amber-50 text-xs text-amber-700">
+                    <CloudRain className="mr-1 h-3 w-3" />
+                    Weather hold
+                  </Badge>
+                )}
+              </div>
+              <CardDescription className="text-base text-slate-600">{rec.description}</CardDescription>
+            </div>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="grid gap-4 md:grid-cols-3">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">{rec.confidenceBasis}</span>
+              <span className="font-medium">{rec.confidence}%</span>
+            </div>
+            <Progress value={rec.confidence} className="h-2" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Recommended timing</p>
+            <p className="text-sm font-medium text-slate-800">{rec.timing}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Estimated impact</p>
+            <p className="text-sm font-medium text-slate-800">{rec.estimatedImpact}</p>
+          </div>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-2">
+          <h4 className="flex items-center gap-2 text-sm font-medium">
+            <Brain className="h-4 w-4 text-green-600" />
+            Why this recommendation
+          </h4>
+          <ul className="space-y-1.5">
+            {rec.reasoning.map((line, i) => (
+              <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
+                <div className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-green-500" />
+                {line}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="rounded-xl border border-green-100 bg-green-50/60 p-3">
+          <p className="text-xs font-bold uppercase tracking-wide text-green-700">Action</p>
+          <p className="mt-0.5 text-sm font-semibold text-[#1a2e1d]">{rec.action}</p>
+        </div>
+
+        <div className="flex items-center gap-2 pt-1">
+          <Button
+            onClick={() => implement(rec)}
+            disabled={implementing === rec.id}
+            className="bg-[#3a7d44] text-white hover:bg-[#2e6336]"
+          >
+            {implementing === rec.id ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : rec.kind === "treatment" ? (
+              <Zap className="mr-2 h-4 w-4" />
+            ) : (
+              <Droplets className="mr-2 h-4 w-4" />
+            )}
+            {rec.kind === "treatment" ? "Dispatch spray" : "Start irrigation"}
+          </Button>
+          <Button
+            variant="outline"
+            className="bg-transparent"
+            onClick={() => {
+              setSelectedRec(rec)
+              setIsDetailsOpen(true)
+            }}
+          >
+            Details
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  )
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
       <div className="mx-auto max-w-7xl space-y-6">
         {/* Header */}
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">AI Recommendations</h1>
-            <p className="text-muted-foreground">Intelligent suggestions for optimal farm management</p>
+            <h1 className="flex items-center gap-3 text-3xl font-black text-[#1a2e1d]">
+              <Brain className="h-8 w-8 text-green-600" />
+              AI Recommendations
+            </h1>
+            <p className="mt-1 text-muted-foreground">
+              Fuses your ML diagnosis, live farm sensors, and the weather forecast into one prioritized action list.
+            </p>
           </div>
-
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2">
-              <Switch id="auto-recommendations" checked={autoRecommendations} onCheckedChange={setAutoRecommendations} />
-              <Label htmlFor="auto-recommendations" className="text-sm">Auto Recommendations</Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <Switch id="notifications" checked={notifications} onCheckedChange={setNotifications} />
-              <Label htmlFor="notifications" className="text-sm">Notifications</Label>
-            </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => {
-                clearImplementationRecords()
-                toast("History and constraints cleared")
-              }}
-            >
-              Reset History
-            </Button>
-          </div>
+          <Button variant="outline" onClick={() => load(true)} disabled={refreshing} className="bg-transparent">
+            <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+            Refresh
+          </Button>
         </div>
 
-        {/* Summary Cards */}
+        {/* Fusion context strip — makes the "why" visible and honest */}
+        {context && (
+          <div className="grid grid-cols-2 gap-3 rounded-2xl border border-green-100 bg-white p-4 shadow-sm md:grid-cols-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-green-700">Weather feed</p>
+              <p className="mt-0.5 text-sm font-bold capitalize text-[#1a2e1d]">
+                {context.weatherSource}
+                {!context.weatherUsable && <span className="ml-1 text-xs font-normal text-amber-600">(advisory)</span>}
+              </p>
+              <p className="truncate text-xs text-slate-400">{context.location}</p>
+            </div>
+            <div>
+              <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-green-700">
+                <Bug className="h-3 w-3" /> Disease pressure
+              </p>
+              <p className={`mt-0.5 text-sm font-bold capitalize ${pressureTone}`}>
+                {context.fungalPressure.band} ({context.fungalPressure.score})
+              </p>
+            </div>
+            <div>
+              <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-green-700">
+                <Wind className="h-3 w-3" /> Spray window
+              </p>
+              <p className="mt-0.5 text-sm font-bold text-[#1a2e1d]">
+                {context.sprayWindow.safeNow
+                  ? "Open now"
+                  : context.sprayWindow.nextSafeInHours != null
+                    ? `~${context.sprayWindow.nextSafeInHours}h`
+                    : "Closed"}
+              </p>
+            </div>
+            <div>
+              <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-green-700">
+                <Gauge className="h-3 w-3" /> Live leaf sensor
+              </p>
+              <p className="mt-0.5 text-sm font-bold text-[#1a2e1d]">{context.climateLive ? "Streaming" : "Offline"}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Summary cards */}
         <div className="grid gap-4 md:grid-cols-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -275,7 +378,6 @@ export default function Recommendations() {
               <p className="text-xs text-muted-foreground">Pending actions</p>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Urgent Actions</CardTitle>
@@ -286,26 +388,26 @@ export default function Recommendations() {
               <p className="text-xs text-muted-foreground">Require immediate attention</p>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Important Items</CardTitle>
-              <Clock className="h-4 w-4 text-orange-600" />
+              <CardTitle className="text-sm font-medium">Weather-aware</CardTitle>
+              <CloudRain className="h-4 w-4 text-sky-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-orange-600">{importantCount}</div>
-              <p className="text-xs text-muted-foreground">Within 24 hours</p>
+              <div className="text-2xl font-bold text-sky-700">{insights?.weatherAwareDecisions ?? 0}</div>
+              <p className="text-xs text-muted-foreground">Held or timed by forecast</p>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">AI Confidence</CardTitle>
+              <CardTitle className="text-sm font-medium">Avg diagnosis confidence</CardTitle>
               <Target className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-primary">89%</div>
-              <p className="text-xs text-muted-foreground">Average accuracy</p>
+              <div className="text-2xl font-bold text-[#3a7d44]">
+                {insights?.avgDetectionConfidence != null ? `${insights.avgDetectionConfidence}%` : "—"}
+              </div>
+              <p className="text-xs text-muted-foreground">Across recorded detections</p>
             </CardContent>
           </Card>
         </div>
@@ -315,208 +417,76 @@ export default function Recommendations() {
             <TabsTrigger value="active">Active ({recommendations.length})</TabsTrigger>
             <TabsTrigger value="urgent">Urgent ({urgentCount})</TabsTrigger>
             <TabsTrigger value="implemented">Implemented ({implementedRecords.length})</TabsTrigger>
-            <TabsTrigger value="insights">AI Insights</TabsTrigger>
+            <TabsTrigger value="insights">Insights</TabsTrigger>
           </TabsList>
 
           <TabsContent value="active" className="space-y-4">
             {recommendations.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed rounded-xl border-slate-200">
-                <Brain className="h-12 w-12 text-slate-300 mb-4" />
-                <h3 className="text-lg font-medium text-slate-900">All caught up!</h3>
-                <p className="text-sm text-slate-500 max-w-xs mb-4">No active recommendations or all suggestions have been implemented.</p>
-                <Button onClick={handleCreateDemo} variant="outline" size="sm">
-                  Generate Demo Detection
-                </Button>
+              <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 py-12 text-center">
+                <CheckCircle className="mb-4 h-12 w-12 text-green-300" />
+                <h3 className="text-lg font-medium text-slate-900">All caught up</h3>
+                <p className="max-w-xs text-sm text-slate-500">
+                  No active disease detections or irrigation needs right now. New scans and sensor readings appear here automatically.
+                </p>
               </div>
             ) : (
-              recommendations.map((rec) => (
-                <Card key={rec.id} className="relative shadow-sm hover:shadow-md transition-all duration-300">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3">
-                      <div className={`p-2 rounded-lg ${getTypeColor(rec.type)}`}>{getTypeIcon(rec.type)}</div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <CardTitle className="text-lg">{rec.title}</CardTitle>
-                          <Badge variant={getPriorityColor(rec.priority)} className="capitalize">{rec.priority}</Badge>
-                          {rec.zone && (
-                            <Badge variant="outline" className="text-xs">
-                              <MapPin className="mr-1 h-3 w-3" />
-                              {rec.zone}
-                            </Badge>
-                          )}
-                        </div>
-                        <CardDescription className="text-base text-slate-600">{rec.description}</CardDescription>
-                      </div>
-                    </div>
-                    <Button variant="outline" size="sm" onClick={() => handleDismiss(rec.id)} className="bg-transparent opacity-40 hover:opacity-100 transition-opacity">
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">AI Confidence</span>
-                        <span className="font-medium">{rec.confidence}%</span>
-                      </div>
-                      <Progress value={rec.confidence} className="h-2" />
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Estimated Impact</p>
-                      <p className="text-sm font-medium text-slate-800">{rec.estimatedImpact}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">Timeframe</p>
-                      <p className="text-sm font-medium text-slate-800">{rec.timeframe}</p>
-                    </div>
-                  </div>
-
-                  <Separator />
-
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium flex items-center gap-2">
-                      <Brain className="h-4 w-4 text-primary" />
-                      AI Reasoning
-                    </h4>
-                    <p className="text-sm text-slate-600">{rec.reasoning}</p>
-                  </div>
-
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium mb-3">Recommended Actions</h4>
-                    <div className="grid md:grid-cols-2 gap-2">
-                      {rec.actions.map((action, index) => (
-                        <div key={index} className="flex items-center gap-3 p-2 rounded-lg bg-slate-50 border border-slate-100 text-sm">
-                          <div className="h-2 w-2 rounded-full bg-primary" />
-                          {action}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 pt-2">
-                    <Button onClick={() => handleImplement(rec)} className="bg-primary hover:bg-primary/90">
-                      <Check className="mr-2 h-4 w-4" />
-                      Implement
-                    </Button>
-                    <Button variant="outline" className="bg-transparent">
-                      <Calendar className="mr-2 h-4 w-4" />
-                      Schedule
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      className="bg-transparent"
-                      onClick={() => {
-                        setSelectedRec(rec)
-                        setIsDetailsOpen(true)
-                      }}
-                    >
-                      More Details
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))
-          )}
-        </TabsContent>
+              recommendations.map(renderCard)
+            )}
+          </TabsContent>
 
           <TabsContent value="urgent" className="space-y-4">
-            {recommendations.filter(r => r.type === "urgent").map((rec) => (
-              <Card key={rec.id} className="border-red-200 dark:border-red-800 shadow-sm">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 rounded-lg bg-red-50 dark:bg-red-950 text-red-600">
-                        <AlertTriangle className="h-4 w-4" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <CardTitle className="text-lg text-red-600">{rec.title}</CardTitle>
-                          {rec.zone && (
-                            <Badge variant="outline" className="text-xs">
-                              <MapPin className="mr-1 h-3 w-3" />
-                              {rec.zone}
-                            </Badge>
-                          )}
-                        </div>
-                        <CardDescription className="text-base">{rec.description}</CardDescription>
-                      </div>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
-                    <p className="text-sm text-red-800 dark:text-red-200 font-medium">⚠️ Urgent Action Required: {rec.timeframe}</p>
-                  </div>
-                  <div className="space-y-2">
-                    <h4 className="text-sm font-medium">Immediate Actions</h4>
-                    <ul className="space-y-1">
-                      {rec.actions.map((action, index) => (
-                        <li key={index} className="flex items-center gap-2 text-sm">
-                          <div className="h-1.5 w-1.5 rounded-full bg-red-600" />
-                          {action}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button className="bg-red-600 hover:bg-red-700" onClick={() => handleImplement(rec)}>
-                      <Zap className="mr-2 h-4 w-4" />
-                      Take Action Now
-                    </Button>
-                    <Button 
-                      variant="outline" 
-                      className="bg-transparent"
-                      onClick={() => {
-                        setSelectedRec(rec)
-                        setIsDetailsOpen(true)
-                      }}
-                    >
-                      More Details
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+            {urgent.length === 0 ? (
+              <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 py-12 text-center">
+                <CheckCircle className="mb-4 h-12 w-12 text-green-300" />
+                <h3 className="text-lg font-medium text-slate-900">No urgent actions</h3>
+              </div>
+            ) : (
+              urgent.map(renderCard)
+            )}
           </TabsContent>
 
           <TabsContent value="implemented" className="space-y-4">
-            <div className="flex justify-end">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="text-xs text-slate-400 hover:text-red-500"
-                onClick={() => {
-                  clearImplementationRecords()
-                  toast.success("Implementation history cleared")
-                }}
-              >
-                Clear History
-              </Button>
-            </div>
+            {implementedRecords.length > 0 && (
+              <div className="flex justify-end">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-slate-400 hover:text-red-500"
+                  onClick={() => {
+                    clearImplementationRecords()
+                    toast.success("Implementation history cleared")
+                  }}
+                >
+                  Clear history
+                </Button>
+              </div>
+            )}
             {implementedRecords.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center border-2 border-dashed rounded-xl border-slate-200">
-                <CheckCircle className="h-12 w-12 text-slate-300 mb-4" />
+              <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-200 py-12 text-center">
+                <CheckCircle className="mb-4 h-12 w-12 text-slate-300" />
                 <h3 className="text-lg font-medium text-slate-900">No actions implemented yet</h3>
-                <p className="text-sm text-slate-500 max-w-xs">Once you implement AI recommendations, they will appear here for your records.</p>
+                <p className="max-w-xs text-sm text-slate-500">
+                  When you dispatch a spray or start irrigation from a recommendation, it is logged here.
+                </p>
               </div>
             ) : (
               implementedRecords.map((rec) => (
-                <Card key={rec.id} className="opacity-90 bg-slate-50 border-slate-200">
+                <Card key={rec.id} className="border-slate-200 bg-slate-50">
                   <CardHeader>
                     <div className="flex items-start gap-3">
-                      <div className="p-2 rounded-lg bg-green-50 dark:bg-green-950 text-green-600">
+                      <div className="rounded-lg bg-green-50 p-2 text-green-600">
                         <CheckCircle className="h-4 w-4" />
                       </div>
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1 justify-between">
+                        <div className="mb-1 flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
                             <CardTitle className="text-lg">{rec.title}</CardTitle>
-                            <Badge variant="outline" className="text-green-600 border-green-600">Implemented</Badge>
+                            <Badge variant="outline" className="border-green-600 text-green-600">
+                              Done
+                            </Badge>
                           </div>
                           <span className="text-xs text-slate-400">
-                            {new Date(rec.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(rec.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                           </span>
                         </div>
                         <CardDescription>{rec.description}</CardDescription>
@@ -538,135 +508,150 @@ export default function Recommendations() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Brain className="h-5 w-5 text-primary" />
-                  AI Performance Insights
+                  <Brain className="h-5 w-5 text-green-600" />
+                  Operational Metrics
                 </CardTitle>
-                <CardDescription>How the AI system is helping optimize your farm</CardDescription>
+                <CardDescription>
+                  Tallied from your real detection and spray history — not estimated accuracy figures.
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-4">
-                    <h4 className="font-medium">Prediction Accuracy</h4>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Disease Detection</span>
-                        <span className="text-sm font-medium">94%</span>
-                      </div>
-                      <Progress value={94} className="h-2" />
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Weather Predictions</span>
-                        <span className="text-sm font-medium">87%</span>
-                      </div>
-                      <Progress value={87} className="h-2" />
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Optimal Timing</span>
-                        <span className="text-sm font-medium">91%</span>
-                      </div>
-                      <Progress value={91} className="h-2" />
-                    </div>
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Active detections</p>
+                    <p className="mt-1 text-2xl font-black text-red-600">{insights?.activeCount ?? 0}</p>
                   </div>
-                  <div className="space-y-4">
-                    <h4 className="font-medium">Impact Metrics</h4>
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Pesticide Reduction</span>
-                        <span className="text-sm font-medium text-green-600">-23%</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Early Disease Detection</span>
-                        <span className="text-sm font-medium text-green-600">+67%</span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm">Yield Improvement</span>
-                        <span className="text-sm font-medium text-green-600">+12%</span>
-                      </div>
-                    </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Treated</p>
+                    <p className="mt-1 text-2xl font-black text-green-600">{insights?.treatedCount ?? 0}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Containment rate</p>
+                    <p className="mt-1 text-2xl font-black text-[#1a2e1d]">
+                      {insights?.containmentRate != null ? `${insights.containmentRate}%` : "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
+                    <p className="text-xs uppercase tracking-wide text-slate-500">Total sprays</p>
+                    <p className="mt-1 text-2xl font-black text-[#1a2e1d]">{insights?.totalSprays ?? 0}</p>
                   </div>
                 </div>
+
+                {context && (
+                  <div className="rounded-xl border border-green-100 bg-green-50/50 p-4">
+                    <h4 className="mb-3 flex items-center gap-2 text-sm font-bold text-green-800">
+                      <CloudRain className="h-4 w-4" /> Current environmental context
+                    </h4>
+                    <div className="grid gap-3 text-sm sm:grid-cols-3">
+                      <div>
+                        <p className="text-xs text-slate-500">Disease pressure</p>
+                        <p className={`font-bold capitalize ${pressureTone}`}>
+                          {context.fungalPressure.band} ({context.fungalPressure.score}/100)
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Spray window</p>
+                        <p className="font-bold text-[#1a2e1d]">
+                          {context.sprayWindow.safeNow ? "Open now" : context.sprayWindow.reason}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500">Weather-aware decisions</p>
+                        <p className="font-bold text-[#1a2e1d]">{insights?.weatherAwareDecisions ?? 0}</p>
+                      </div>
+                    </div>
+                    {context.fungalPressure.drivers.length > 0 && (
+                      <p className="mt-3 text-xs text-slate-500">
+                        Drivers: {context.fungalPressure.drivers.join(" · ")}
+                      </p>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
         </Tabs>
       </div>
 
+      {/* Details dialog */}
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
         <DialogContent className="max-w-2xl">
           {selectedRec && (
             <>
               <DialogHeader>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className={`p-2 rounded-lg ${getTypeColor(selectedRec.type)}`}>
-                    {getTypeIcon(selectedRec.type)}
-                  </div>
-                  <Badge variant={getPriorityColor(selectedRec.priority)} className="capitalize">
-                    {selectedRec.priority} Priority
+                <div className="mb-2 flex items-center gap-2">
+                  <div className={`rounded-lg p-2 ${typeColor(selectedRec.type)}`}>{typeIcon(selectedRec.type)}</div>
+                  <Badge variant={priorityVariant(selectedRec.priority) as any} className="capitalize">
+                    {selectedRec.priority} priority
                   </Badge>
-                  {selectedRec.zone && <Badge variant="secondary">Zone {selectedRec.zone}</Badge>}
+                  <Badge variant="secondary">Zone {selectedRec.zone}</Badge>
+                  {selectedRec.weatherGated && (
+                    <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-700">
+                      Weather hold
+                    </Badge>
+                  )}
                 </div>
                 <DialogTitle className="text-2xl">{selectedRec.title}</DialogTitle>
-                <DialogDescription className="text-base pt-2">
-                  {selectedRec.description}
-                </DialogDescription>
+                <DialogDescription className="pt-2 text-base">{selectedRec.description}</DialogDescription>
               </DialogHeader>
 
-              <div className="grid gap-6 py-4">
+              <div className="grid gap-6 py-2">
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                    <p className="text-sm text-muted-foreground flex items-center gap-2">
-                      <Target className="h-4 w-4" /> Confidence Score
+                  <div className="space-y-1 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                    <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Target className="h-4 w-4" /> {selectedRec.confidenceBasis}
                     </p>
-                    <p className="text-lg font-bold text-primary">{selectedRec.confidence}%</p>
+                    <p className="text-lg font-bold text-[#3a7d44]">{selectedRec.confidence}%</p>
                     <Progress value={selectedRec.confidence} className="h-1.5" />
                   </div>
-                  <div className="space-y-1 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                    <p className="text-sm text-muted-foreground flex items-center gap-2">
-                      <Zap className="h-4 w-4" /> Estimated Impact
+                  <div className="space-y-1 rounded-lg border border-slate-100 bg-slate-50 p-3">
+                    <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                      <Clock className="h-4 w-4" /> Timing
                     </p>
-                    <p className="text-lg font-bold text-slate-800">{selectedRec.estimatedImpact}</p>
+                    <p className="text-lg font-bold text-slate-800">{selectedRec.timing}</p>
                   </div>
                 </div>
 
                 <div className="space-y-3">
-                  <h4 className="font-semibold flex items-center gap-2">
-                    <Brain className="h-4 w-4 text-primary" /> 
-                    AI Comprehensive Reasoning
+                  <h4 className="flex items-center gap-2 font-semibold">
+                    <Brain className="h-4 w-4 text-green-600" /> How this was decided
                   </h4>
-                  <div className="text-sm text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    {selectedRec.reasoning}
-                    <p className="mt-2 text-xs italic text-slate-400">
-                      *This reasoning is generated by the Bhoomitra Fusion Engine by correlating real-time sensor data, weather patterns, and historical crop health analytics.
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  <h4 className="font-semibold">Step-by-Step Action Plan</h4>
-                  <div className="space-y-2">
-                    {selectedRec.actions.map((action, i) => (
-                      <div key={i} className="flex items-start gap-3 p-3 rounded-lg border border-slate-100 hover:bg-slate-50 transition-colors">
-                        <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary flex items-center justify-center text-xs font-bold">
+                  <div className="space-y-2 rounded-xl border border-slate-100 bg-slate-50 p-4">
+                    {selectedRec.reasoning.map((line, i) => (
+                      <div key={i} className="flex items-start gap-3 text-sm text-slate-700">
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-100 text-xs font-bold text-green-700">
                           {i + 1}
                         </div>
-                        <p className="text-sm font-medium text-slate-700">{action}</p>
+                        <p>{line}</p>
                       </div>
                     ))}
+                    <p className="pt-1 text-xs italic text-slate-400">
+                      Fused through the same decision engine that gates the irrigation and spray hardware, so the advice and the action always agree.
+                    </p>
                   </div>
                 </div>
               </div>
 
-              <DialogFooter className="flex gap-2 sm:justify-between items-center sm:flex-row flex-col">
+              <DialogFooter className="flex flex-col items-center gap-2 sm:flex-row sm:justify-between">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Clock className="h-3 w-3" />
-                  Timeline: {selectedRec.timeframe}
+                  <Zap className="h-3 w-3" />
+                  {selectedRec.action}
                 </div>
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>Close</Button>
-                  <Button onClick={() => {
-                    handleImplement(selectedRec)
-                    setIsDetailsOpen(false)
-                  }}>
-                    <Check className="mr-2 h-4 w-4" />
-                    Implement Now
+                  <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
+                    Close
+                  </Button>
+                  <Button
+                    onClick={() => implement(selectedRec)}
+                    disabled={implementing === selectedRec.id}
+                    className="bg-[#3a7d44] hover:bg-[#2e6336]"
+                  >
+                    {implementing === selectedRec.id ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="mr-2 h-4 w-4" />
+                    )}
+                    {selectedRec.kind === "treatment" ? "Dispatch spray" : "Start irrigation"}
                   </Button>
                 </div>
               </DialogFooter>

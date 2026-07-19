@@ -130,15 +130,15 @@ export default function DashboardLayout({
                                         setIsLoading(true)
                                     }
                                 }}
-                                className={`flex items-center gap-4 px-4 py-3 rounded-2xl transition-all duration-300 w-full ${isActive
+                                className={`flex items-center justify-center group-hover:justify-start gap-0 group-hover:gap-4 px-0 group-hover:px-4 py-3 rounded-2xl transition-all duration-300 w-full ${isActive
                                         ? "bg-green-600 text-white shadow-lg"
                                         : "text-green-800 hover:bg-green-50"
                                     }`}
                             >
-                                <div className="min-w-[1.25rem] flex items-center justify-center">
+                                <div className="shrink-0 flex items-center justify-center">
                                     <Icon size={22} />
                                 </div>
-                                <span className="text-sm font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300 overflow-hidden">
+                                <span className="text-sm font-semibold whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[180px] opacity-0 group-hover:opacity-100 transition-all duration-300">
                                     {item.name}
                                 </span>
                             </Link>
@@ -150,12 +150,12 @@ export default function DashboardLayout({
                 <div className="shrink-0 px-4 py-4 border-t border-green-50">
                     <button
                         onClick={handleLogout}
-                        className="flex items-center gap-4 px-4 py-3 rounded-2xl w-full transition-all duration-300 text-red-700 hover:bg-red-50 hover:shadow-md"
+                        className="flex items-center justify-center group-hover:justify-start gap-0 group-hover:gap-4 px-0 group-hover:px-4 py-3 rounded-2xl w-full transition-all duration-300 text-red-700 hover:bg-red-50 hover:shadow-md"
                     >
-                        <div className="min-w-[1.25rem] flex items-center justify-center">
+                        <div className="shrink-0 flex items-center justify-center">
                             <LogOut size={22} />
                         </div>
-                        <span className="text-sm font-semibold whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300 overflow-hidden">
+                        <span className="text-sm font-semibold whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[180px] opacity-0 group-hover:opacity-100 transition-all duration-300">
                             {t("nav.logout")}
                         </span>
                     </button>
