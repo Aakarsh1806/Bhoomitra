@@ -3,6 +3,8 @@ import { readDB } from "@/app/lib/database"
 import { zones, irrigationSettings, getFarmClimate } from "@/app/api/zones/data"
 import { getForecast } from "@/app/lib/weatherService"
 import { decideFarmActions } from "@/app/lib/farmDecisionService"
+import { buildSpreadPlan } from "@/app/lib/spreadEngine"
+import { getTreatmentOptions } from "@/app/lib/mlProcessor"
 
 /**
  * Recommendations engine.
@@ -32,10 +34,10 @@ function isHealthy(disease?: string) {
   return String(disease || "").toLowerCase().includes("healthy")
 }
 
-function severityImpact(sev: Severity): string {
-  if (sev === "high") return "Protects against 15–20% yield loss if contained early"
-  if (sev === "moderate") return "Protects against 5–10% yield loss"
-  return "Prevents minor foliage damage"
+function recommendationImpact(severity: Severity): string {
+  if (severity === "high") return "Model projection: high-priority containment before spread increases"
+  if (severity === "moderate") return "Model projection: contain and re-scout before the next spread window"
+  return "Model projection: monitor the next field observation"
 }
 
 export async function GET() {
@@ -45,27 +47,102 @@ export async function GET() {
   const now = Date.now()
 
   const detections: any[] = db.detections || []
-  const sprays: any[] = db.sprays || []
+  const sprays: any[] = (db.sprays || []).filter(
+    (spray: any) => spray.applicationMode !== "water-validation" && spray.applicationStatus !== "queued",
+  )
 
   const activeDetections = detections.filter(
     (d) => d.status === "active" && !isHealthy(d.diseaseName || d.disease),
+  )
+  const cropReviewDetections = activeDetections.filter((d) => d.cropMatch === "review")
+  const actionableDetections = activeDetections.filter((d) => d.cropMatch !== "review")
+  const spreadPlan = buildSpreadPlan({
+    zones: zones.map((zone) => ({
+      id: zone.id,
+      row: zone.row,
+      col: zone.col,
+      soilMoisture: zone.soilMoisture,
+      disease: zone.disease,
+      severityLevel: zone.severityLevel,
+      severityScore: zone.severityScore,
+      mlConfidence: zone.mlConfidence,
+    })),
+    detections,
+    weather,
+    climate: {
+      fresh: climate.fresh,
+      humidity: climate.humidity,
+      temperature: climate.temperature,
+      vpd: climate.vpd,
+    },
+    days: 5,
+    budget: 2,
+  })
+  const bottleneckImpactByZone = new Map(
+    spreadPlan.bottlenecks.map((target) => [target.zoneId, target.projectedInfectionsAvoided]),
+  )
+  const sourceContainmentLeverage = Number(
+    Math.max(0, spreadPlan.baseline.finalExpectedInfected - spreadPlan.generatedFrom.seedZoneIds.length).toFixed(2),
   )
 
   const recommendations: any[] = []
   let weatherAwareCount = 0
 
   // ── Treatment recommendations from real active detections ─────────────────
-  for (const det of activeDetections) {
-    const zone = zones.find((z) => z.id === det.zoneId)
-    const severity = normalizeSeverity(det.severityLevel)
-    const confidencePct = Math.round((Number(det.confidence) || 0) * 100)
-    const chemical = det.recommendedChemical && det.recommendedChemical !== "No chemical required"
-      ? det.recommendedChemical
-      : det.organicAlternative || "IPM treatment"
-    const cropLabel = String(det.disease || "").split("___")[0].replace(/_/g, " ").trim() || "crop"
+  for (const det of actionableDetections) {
+    // The crop is the farmer's selected crop (or the model's crop family) —
+    // never parsed from det.disease, which is a crop-stripped label like
+    // "Black Rot" and would otherwise print "Black Rot on Black Rot".
+    const cropLabel = det.scanCrop || det.modelCrop || "the crop"
     const diseaseLabel = String(det.disease || "")
       .split("___")[1]?.replace(/_/g, " ")
       .trim() || det.disease || "disease"
+    const severity = normalizeSeverity(det.severityLevel)
+    const confidencePct = Math.round((Number(det.confidence) || 0) * 100)
+
+    // Consult the live treatment catalog (not the possibly-stale chemical
+    // recorded on an older detection) so a non-curable systemic condition —
+    // Esca and any future addition like it — always gets cultural/structural
+    // guidance here, never a foliar-fungicide "spray plan" funnel, even if it
+    // was scanned before the catalog had a cultural-only entry for it.
+    const canonicalDisease = det.canonicalDisease || det.disease
+    const currentTreatment = getTreatmentOptions(canonicalDisease, det.scanCrop || cropLabel)
+    const currentChemicalName = currentTreatment.chemicals?.[0]?.chemicalName
+    const isCulturalOnly = Boolean(currentChemicalName && /no curative|not applicable|no chemical/i.test(currentChemicalName))
+
+    if (isCulturalOnly) {
+      const guidance = currentTreatment.offlineRecommendation?.organicAlternative || det.organicAlternative || "Cultural and structural management — no curative spray exists for this condition."
+      recommendations.push({
+        id: `treat-${det.id}`,
+        kind: "preventive",
+        severity,
+        priority: severity === "high" ? "high" : severity === "moderate" ? "medium" : "low",
+        type: severity === "high" ? "urgent" : "important",
+        zone: det.zoneId,
+        title: `${severity[0].toUpperCase()}${severity.slice(1)} alert: ${diseaseLabel} in ${det.zoneId}`,
+        description: `${diseaseLabel} detected on ${cropLabel}. This is a non-curable systemic condition — no foliar fungicide cures it, so no spray plan is offered.`,
+        confidence: confidencePct,
+        confidenceBasis: "Diagnosis confidence (ML model)",
+        action: guidance,
+        timing: "Ongoing structural/cultural management, not weather-gated",
+        estimatedImpact: "Slows decline and limits spread to healthy wood/plants; does not cure the existing infection",
+        reasoning: [
+          `Diagnosis: ${diseaseLabel} on ${cropLabel} — ${severity} severity, ${confidencePct}% model confidence.`,
+          `Treatment catalog: ${currentChemicalName} — do not present a fungicide as a cure for this condition.`,
+        ],
+        weatherGated: false,
+        decisionAction: "cultural_management_only",
+        detectionId: det.id,
+        disease: det.disease,
+        scannedAt: det.timestamp,
+      })
+      continue
+    }
+
+    const zone = zones.find((z) => z.id === det.zoneId)
+    const chemical = det.recommendedChemical && det.recommendedChemical !== "No chemical required"
+      ? det.recommendedChemical
+      : det.organicAlternative || "IPM treatment"
 
     // Run the same decision engine the spray hardware uses.
     const decision = zone
@@ -85,7 +162,14 @@ export async function GET() {
     // Concrete, weather-aware action + timing.
     let action: string
     let timing: string
-    if (!spray || spray.action === "allowed") {
+    if (!zone || !decision || !spray) {
+      // The fusion/decision engine never actually ran for this zone (e.g. it
+      // no longer exists in the live zone list) — never default to "safe to
+      // treat" here, since that would assert a weather/VPD check that never
+      // happened.
+      action = `Confirm zone ${det.zoneId} conditions on site before spraying`
+      timing = "Zone data unavailable — verify soil, weather, and VPD manually"
+    } else if (spray.action === "allowed") {
       action = `Spray ${chemical} on zone ${det.zoneId}`
       timing = "Conditions are safe — treat now"
     } else if (spray.action === "hold_for_rain") {
@@ -100,7 +184,7 @@ export async function GET() {
       timing = "Leaf conditions not yet ideal for uptake"
     } else {
       action = `Confirm conditions before spraying zone ${det.zoneId}`
-      timing = "Weather data unavailable — verify on site"
+      timing = "Forecast is reconnecting — verify conditions on site"
     }
 
     // Real fusion trace: the actual factors that drove the call.
@@ -116,6 +200,10 @@ export async function GET() {
       reasoning.push(`Live farm sensor: VPD ${climate.vpd} kPa (${climate.vpdBand} band).`)
     }
     if (spray?.reason) reasoning.push(`Spray window: ${spray.reason}`)
+    const spreadLeverage = bottleneckImpactByZone.get(det.zoneId) ?? sourceContainmentLeverage
+    if (spreadLeverage > 0) {
+      reasoning.push(`Spread model: containing this active detection is associated with ~${spreadLeverage.toFixed(1)} projected secondary infections over the next 5 days.`)
+    }
 
     recommendations.push({
       id: `treat-${det.id}`,
@@ -130,7 +218,7 @@ export async function GET() {
       confidenceBasis: "Diagnosis confidence (ML model)",
       action,
       timing,
-      estimatedImpact: severityImpact(severity),
+      estimatedImpact: `${recommendationImpact(severity)}${spreadLeverage > 0 ? ` · model spread leverage ~${spreadLeverage.toFixed(1)} infections` : ""}`,
       reasoning,
       weatherGated,
       decisionAction: spray?.action || "unknown",
@@ -139,6 +227,41 @@ export async function GET() {
       chemical,
       dosage: det.dosage || "",
       disease: det.disease || diseaseLabel,
+      spreadLeverage,
+      scannedAt: det.timestamp,
+    })
+  }
+
+  // A classifier label from a different crop family must never turn into a
+  // pesticide instruction. Keep the scan visible and make confirmation the
+  // first action instead.
+  for (const det of cropReviewDetections) {
+    const selectedCrop = det.scanCrop || "the selected crop"
+    const modelCrop = det.modelCrop || "the model crop family"
+    recommendations.push({
+      id: `crop-review-${det.id}`,
+      kind: "preventive",
+      severity: normalizeSeverity(det.severityLevel),
+      priority: "high",
+      type: "urgent",
+      zone: det.zoneId,
+      title: `Confirm crop before treatment in ${det.zoneId}`,
+      description: `The scan was marked as ${selectedCrop}, while the classifier label belongs to ${modelCrop}. No chemical action is enabled.`,
+      confidence: Math.round((Number(det.confidence) || 0) * 100),
+      confidenceBasis: "Crop-consistency check",
+      action: "Confirm the photographed crop and rescan a clear leaf before preparing any treatment.",
+      timing: "Before any spray decision",
+      estimatedImpact: "Safety gate: prevents an unsupported crop–disease treatment from entering the queue",
+      reasoning: [
+        `Selected scan crop: ${selectedCrop}.`,
+        `Classifier crop family: ${modelCrop}.`,
+        "No spray recommendation is issued until those records agree.",
+      ],
+      weatherGated: false,
+      decisionAction: "crop_confirmation_required",
+      detectionId: det.id,
+      disease: det.disease,
+      scannedAt: det.timestamp,
     })
   }
 
@@ -189,9 +312,18 @@ export async function GET() {
     })
   }
 
-  // Sort: urgent first, then by confidence.
+  // Sort: urgency first. Within an urgency tier, favour the combined signal
+  // the farmer sees: severity × model confidence × simulated spread leverage.
   const rank = { urgent: 0, important: 1, suggestion: 2, optimization: 3 } as Record<string, number>
-  recommendations.sort((a, b) => (rank[a.type] - rank[b.type]) || b.confidence - a.confidence)
+  const recommendationScore = (recommendation: any) => {
+    const severityWeight = recommendation.severity === "high" ? 3 : recommendation.severity === "moderate" ? 2 : 1
+    const confidenceWeight = Math.max(0, Number(recommendation.confidence) || 0) / 100
+    const leverageWeight = Math.max(0, Number(recommendation.spreadLeverage) || 0)
+    return severityWeight * confidenceWeight * (1 + leverageWeight)
+  }
+  recommendations.sort(
+    (a, b) => (rank[a.type] - rank[b.type]) || recommendationScore(b) - recommendationScore(a) || b.confidence - a.confidence,
+  )
 
   // ── Honest operational insights (computed, not invented) ──────────────────
   const treated = detections.filter((d) => d.status === "treated").length
@@ -216,6 +348,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
+    generatedAt: new Date(now).toISOString(),
     recommendations,
     insights,
     context: {
@@ -230,6 +363,8 @@ export async function GET() {
       fungalPressure: weather.derived.fungalPressure,
       sprayWindow: weather.derived.sprayWindow,
       climateLive: climate.fresh,
+      climateLastValidAt: climate.lastValidAt,
+      weatherFetchedAt: weather.fetchedAt,
       location: weather.location.name,
       locationConfigured: weather.location.isConfigured,
     },

@@ -59,7 +59,7 @@ export function calculateSeverity(
   return { level: "low", score: 1 }
 }
 
-export function getTreatmentOptions(disease: string) {
+export function getTreatmentOptions(disease: string, crop?: string) {
   const normalizedDisease = normalizeDiseaseLabel(disease)
 
   if (normalizedDisease.includes("healthy")) {
@@ -71,7 +71,7 @@ export function getTreatmentOptions(disease: string) {
     }
   }
 
-  const telanganaRecommendation = getTelanganaOfflineRecommendation(disease)
+  const telanganaRecommendation = getTelanganaOfflineRecommendation(disease, crop)
 
   if (telanganaRecommendation) {
     return {

@@ -81,7 +81,7 @@ export default function HardwareSafetyPanel() {
               <ShieldAlert className="h-5 w-5 text-red-600" />
               {t("hardware.killSwitch")}
             </CardTitle>
-            <CardDescription>{t("hardware.description", "Live hardware lock, nozzle feedback, and sprayer path")}</CardDescription>
+            <CardDescription>{t("hardware.description", "Emergency stop with live controller status")}</CardDescription>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">OFF</span>

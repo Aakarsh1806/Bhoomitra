@@ -23,7 +23,9 @@ export const FARM_DECISION_CONFIG = {
   imminentRainProbability: 60,
   imminentRainMm: 2,
   currentRainMm: 0.1,
-  safeWindKmh: 20,
+  // Conservative forecast safety gate. This prototype has no local wind
+  // sensor, so it should hold well before drift becomes a concern.
+  safeWindKmh: 15,
   vpd: {
     holdLow: 0.4,
     optimalLow: 0.8,
@@ -56,6 +58,7 @@ export type WeatherDecisionContext = {
   currentHumidity: number | null
   currentPrecipitation: number | null
   currentWindSpeed: number | null
+  currentWindDirection: number | null
   providerReportedRain: boolean
   imminentRain: boolean
   nextRainHours: number | null
@@ -189,17 +192,18 @@ export function getWeatherDecisionContext(
       fetchedAt: null,
       ageMinutes: null,
       usableForDecisions: false,
-      currentDescription: "Weather unavailable",
+      currentDescription: "Forecast reconnecting",
       currentTemperature: null,
       currentHumidity: null,
       currentPrecipitation: null,
       currentWindSpeed: null,
+      currentWindDirection: null,
       providerReportedRain: false,
       imminentRain: false,
       nextRainHours: null,
       totalRain24h: null,
       rainProbabilityNextHours: null,
-      reason: "Forecast unavailable; recommendations use soil moisture only.",
+      reason: "Forecast is reconnecting; irrigation uses soil moisture only until a current forecast returns.",
     }
   }
 
@@ -226,9 +230,9 @@ export function getWeatherDecisionContext(
       rainMmNextHours >= FARM_DECISION_CONFIG.imminentRainMm)
 
   const reason = weather.source === "fallback"
-    ? "Offline fallback forecast is advisory only and cannot defer real irrigation."
+      ? "Forecast is reconnecting; the advisory reference cannot defer real irrigation."
     : ageMinutes === null || !usableForDecisions
-      ? "Weather data is stale; recommendations use soil moisture only."
+      ? "Forecast needs a refresh; irrigation uses soil moisture only."
       : providerReportedRain
         ? "Weather provider reports rain now."
         : imminentRain
@@ -245,6 +249,7 @@ export function getWeatherDecisionContext(
     currentHumidity: Number.isFinite(weather.current.humidity) ? weather.current.humidity : null,
     currentPrecipitation: Number(weather.current.precipitation) || 0,
     currentWindSpeed: Number(weather.current.windSpeed) || 0,
+    currentWindDirection: Number.isFinite(weather.current.windDirection) ? weather.current.windDirection : null,
     providerReportedRain,
     imminentRain,
     nextRainHours: weather.derived.nextRainHours,
@@ -278,7 +283,7 @@ export function decideFarmActions(input: {
     irrigation = {
       action: "weather_unavailable_use_soil_only",
       allowsStart: true,
-      reason: "Forecast unavailable; irrigation recommendation uses soil moisture only.",
+      reason: "Forecast is reconnecting; this irrigation recommendation uses soil moisture only.",
       weatherAdvisory: true,
     }
   } else if (critical) {
@@ -319,7 +324,7 @@ export function decideFarmActions(input: {
       action: "weather_unavailable",
       allowed: false,
       requiresWeatherOverride: input.climate.fresh && input.climate.vpdBand === "green",
-      reason: "Forecast is unavailable or offline; weather safety cannot be confirmed for spraying.",
+      reason: "Forecast is reconnecting; weather safety cannot be confirmed for spraying.",
     }
   } else if (weather.providerReportedRain || weather.imminentRain) {
     spray = {
@@ -343,7 +348,7 @@ export function decideFarmActions(input: {
       allowed: false,
       requiresWeatherOverride: false,
       reason: !input.climate.fresh
-        ? "Farm climate reading is unavailable or stale; VPD cannot clear spraying."
+        ? "The latest farm-climate reading is stale; VPD cannot clear spraying."
         : input.climate.vpdBand === "red"
           ? "Farm VPD is outside the configured spray window."
           : "Farm VPD is marginal; wait for the configured optimal window.",

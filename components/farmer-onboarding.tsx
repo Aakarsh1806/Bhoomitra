@@ -42,8 +42,13 @@ function generateZoneIds(count: number) {
   return ids
 }
 
-function calculateZones(acres: number) {
-  return Math.min(12 + Math.floor((acres - 2) * 2.4), 24)
+// The farm map is a fixed 12-zone layout (A1-A6, B1-B6); only A1-A4 carry a
+// physical hardware pump. Zone count is a hard constant, never derived from
+// acreage, so a bigger farm can never balloon the grid past 12 zones.
+const FARM_ZONE_COUNT = 12
+
+function calculateZones(_acres: number) {
+  return FARM_ZONE_COUNT
 }
 
 export default function FarmerOnboarding({ onComplete }: Props) {
@@ -241,9 +246,11 @@ export default function FarmerOnboarding({ onComplete }: Props) {
               </div>
 
               <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-center">
-                <p className="text-sm text-green-700">Using your land size formula</p>
-                <p className="mt-2 text-2xl font-bold text-green-800">Your farm will have {zones} zones</p>
-                <p className="mt-1 text-xs text-green-700">zones = min(12 + floor((acres - 2) * 2.4), 24)</p>
+                <p className="text-sm text-green-700">Fixed farm layout</p>
+                <p className="mt-2 text-2xl font-bold text-green-800">Your farm map has {zones} zones (A1-A6, B1-B6)</p>
+                <p className="mt-1 text-xs text-green-700">
+                  Zone count is fixed regardless of land size. Only A1-A4 are wired to the physical pump pilot; A5-A6 and B1-B6 are for planning and reference.
+                </p>
               </div>
 
               <div className="rounded-xl border border-slate-200 p-4">

@@ -17,8 +17,8 @@ import {
     Info,
     History,
     LogOut,
-    Shield,
     UserCircle,
+    Radar,
 } from "lucide-react"
 
 type NavItem = {
@@ -39,6 +39,9 @@ export default function DashboardLayout({
     const { setIsLoading } = useNavigation()
     const [role, setRole] = useState<string | null>(null)
     const [checked, setChecked] = useState(false)
+    const [pinned, setPinned] = useState(false)
+    const [hovered, setHovered] = useState(false)
+    const expanded = pinned || hovered
 
     // Resolve the live account (role + block status). If the account was
     // blocked/removed while the session was open, bounce back to login.
@@ -73,7 +76,7 @@ export default function DashboardLayout({
         { name: t("nav.detection"), href: "/dashboard/detection", icon: Microscope },
         { name: t("nav.analytics"), href: "/dashboard/analytics", icon: BarChart3 },
         { name: t("nav.recommendations"), href: "/dashboard/recommendations", icon: Brain },
-        { name: "Spread Control AI", href: "/dashboard/spread-control", icon: Shield },
+        { name: "Command Center", href: "/dashboard/spread-control", icon: Radar },
         { name: "Activity", href: "/dashboard/history", icon: History },
         { name: "User Management", href: "/dashboard/users", icon: Users, adminOnly: true },
         { name: "About", href: "/dashboard/about", icon: Info },
@@ -102,62 +105,59 @@ export default function DashboardLayout({
         <div className="flex min-h-screen bg-gradient-to-br from-[#f4fbf6] via-[#eef9f2] to-[#e6f6ec]">
 
             {/* ===== SIDEBAR ===== */}
-            <aside className="fixed left-0 top-0 h-screen w-20 hover:w-72 bg-white shadow-2xl border-r border-green-100 transition-all duration-500 ease-in-out z-50 group flex flex-col overflow-hidden">
-
-                <div className="mb-6 mt-6 flex items-center justify-center w-full group-hover:justify-start px-6 shrink-0">
-                    <h1 className="text-2xl font-bold text-green-700 whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                        Bhoomitra
-                    </h1>
-                    <div className="absolute font-bold text-2xl text-green-700 group-hover:hidden">
+            <aside
+                onMouseEnter={() => setHovered(true)}
+                onMouseLeave={() => setHovered(false)}
+                className={`fixed left-0 top-0 z-50 flex h-screen flex-col overflow-hidden border-r border-emerald-100/80 bg-white/95 shadow-[8px_0_40px_-24px_rgba(16,185,129,0.5)] backdrop-blur transition-[width] duration-300 ease-out ${expanded ? "w-72" : "w-20"}`}
+            >
+                {/* Brand — the logo is an always-clickable menu toggle */}
+                <div className="flex h-20 shrink-0 items-center gap-3 px-5">
+                    <button
+                        type="button"
+                        onClick={() => setPinned((value) => !value)}
+                        title={pinned ? "Collapse menu" : "Keep menu open"}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-strong text-sm font-black text-white shadow-[0_0_20px_-4px_rgba(16,185,129,0.6)] transition hover:brightness-110"
+                    >
                         BT
-                    </div>
+                    </button>
+                    <span className={`flex-1 text-xl font-black tracking-tight text-[#14231a] transition-all duration-300 ${expanded ? "max-w-[160px] opacity-100" : "max-w-0 opacity-0"} overflow-hidden whitespace-nowrap`}>Bhoomitra</span>
                 </div>
 
-                {/* Scrollable nav area — guarantees every item is reachable on any screen height */}
-                <nav className="flex-1 min-h-0 overflow-y-auto space-y-2 w-full px-4 py-2 scrollbar-thin scrollbar-thumb-green-100">
+                {/* Nav */}
+                <nav className="scrollbar-thin scrollbar-thumb-emerald-100 min-h-0 w-full flex-1 space-y-1.5 overflow-y-auto px-3 py-2">
                     {navItems.map((item) => {
                         const Icon = item.icon
                         const isActive = pathname === item.href
-
                         return (
                             <Link
                                 key={item.name}
                                 href={item.href}
                                 prefetch
+                                title={!expanded ? item.name : undefined}
                                 onMouseEnter={() => router.prefetch(item.href)}
-                                onClick={() => {
-                                    if (pathname !== item.href) {
-                                        setIsLoading(true)
-                                    }
-                                }}
-                                className={`flex items-center justify-center group-hover:justify-start gap-0 group-hover:gap-4 px-0 group-hover:px-4 py-3 rounded-2xl transition-all duration-300 w-full ${isActive
-                                        ? "bg-green-600 text-white shadow-lg"
-                                        : "text-green-800 hover:bg-green-50"
+                                onClick={() => { if (pathname !== item.href) setIsLoading(true) }}
+                                className={`group/nav relative flex items-center gap-4 rounded-2xl px-3.5 py-3 transition-all duration-200 ${isActive
+                                    ? "bg-brand-strong text-white shadow-[0_0_22px_-6px_rgba(16,185,129,0.7)]"
+                                    : "text-[#2c4633] hover:bg-emerald-50"
                                     }`}
                             >
-                                <div className="shrink-0 flex items-center justify-center">
-                                    <Icon size={22} />
-                                </div>
-                                <span className="text-sm font-semibold whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[180px] opacity-0 group-hover:opacity-100 transition-all duration-300">
-                                    {item.name}
-                                </span>
+                                {isActive && !expanded && <span className="absolute right-1 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-white" />}
+                                <Icon size={22} className="shrink-0" />
+                                <span className={`text-sm font-bold whitespace-nowrap transition-all duration-300 ${expanded ? "max-w-[180px] opacity-100" : "max-w-0 opacity-0"} overflow-hidden`}>{item.name}</span>
                             </Link>
                         )
                     })}
                 </nav>
 
-                {/* Logout pinned at the bottom, always visible */}
-                <div className="shrink-0 px-4 py-4 border-t border-green-50">
+                {/* Logout */}
+                <div className="shrink-0 border-t border-emerald-50 px-3 py-4">
                     <button
                         onClick={handleLogout}
-                        className="flex items-center justify-center group-hover:justify-start gap-0 group-hover:gap-4 px-0 group-hover:px-4 py-3 rounded-2xl w-full transition-all duration-300 text-red-700 hover:bg-red-50 hover:shadow-md"
+                        title={!expanded ? t("nav.logout") : undefined}
+                        className="flex w-full items-center gap-4 rounded-2xl px-3.5 py-3 text-red-600 transition-all duration-200 hover:bg-red-50"
                     >
-                        <div className="shrink-0 flex items-center justify-center">
-                            <LogOut size={22} />
-                        </div>
-                        <span className="text-sm font-semibold whitespace-nowrap overflow-hidden max-w-0 group-hover:max-w-[180px] opacity-0 group-hover:opacity-100 transition-all duration-300">
-                            {t("nav.logout")}
-                        </span>
+                        <LogOut size={22} className="shrink-0" />
+                        <span className={`text-sm font-bold whitespace-nowrap transition-all duration-300 ${expanded ? "max-w-[180px] opacity-100" : "max-w-0 opacity-0"} overflow-hidden`}>{t("nav.logout")}</span>
                     </button>
                 </div>
             </aside>

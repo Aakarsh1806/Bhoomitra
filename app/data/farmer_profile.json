@@ -1,10 +1,10 @@
 {
-  "farmerName": "gyyg",
-  "village": "yh8gb",
-  "district": "nhuumj",
+  "farmerName": "Ravi Kumar",
+  "village": "Atmakur",
+  "district": "Suryapet",
   "acres": 2,
   "totalFarmAreaAcres": 2,
-  "primaryCrop": "Paddy",
+  "primaryCrop": "Grape",
   "zones": 12,
   "zoneCount": 12,
   "zoneNames": {
@@ -27,5 +27,13 @@
     "sensor3": "A3"
   },
   "createdAt": "2026-04-06T07:43:18.222Z",
-  "updatedAt": "2026-04-06T07:43:18.222Z"
+  "updatedAt": "2026-08-21T08:25:31.575Z",
+  "farmLocation": {
+    "label": "Current farm location",
+    "latitude": 51.507368,
+    "longitude": -0.127695,
+    "timezone": "Asia/Calcutta",
+    "source": "device",
+    "updatedAt": "2026-08-21T08:25:30.329Z"
+  }
 }

@@ -35,6 +35,7 @@ export interface HourlyForecast {
   rainProbability: number // %
   precipitation: number // mm
   windSpeed: number // km/h
+  windDirection: number // degrees, meteorological direction
 }
 
 export interface CurrentWeather {
@@ -42,6 +43,7 @@ export interface CurrentWeather {
   humidity: number // %
   precipitation: number // mm (last hour)
   windSpeed: number // km/h
+  windDirection: number // degrees, meteorological direction
   weatherCode: number // WMO code
   description: string
   isDay: boolean
@@ -117,12 +119,12 @@ function computeDerived(current: CurrentWeather, hourly: HourlyForecast[]): Weat
   // next 3h (spraying before rain wastes chemical — it washes off).
   const next3 = hourly.slice(0, 3)
   const imminentRain = next3.some((h) => h.rainProbability >= 40 || h.precipitation >= 0.2)
-  const safeNow = current.precipitation < 0.1 && current.windSpeed < 20 && !imminentRain
+  const safeNow = current.precipitation < 0.1 && current.windSpeed < 15 && !imminentRain
   let nextSafeInHours: number | null = safeNow ? 0 : null
   if (!safeNow) {
     for (let i = 0; i + 2 < hourly.length; i++) {
       const window = hourly.slice(i, i + 3)
-      const dryLowWind = window.every((h) => h.rainProbability < 40 && h.precipitation < 0.2 && h.windSpeed < 20)
+      const dryLowWind = window.every((h) => h.rainProbability < 40 && h.precipitation < 0.2 && h.windSpeed < 15)
       if (dryLowWind) {
         nextSafeInHours = i
         break
@@ -133,7 +135,7 @@ function computeDerived(current: CurrentWeather, hourly: HourlyForecast[]): Weat
     ? "Dry and calm — good conditions to spray now."
     : imminentRain
       ? "Rain expected soon — spraying now risks wash-off."
-      : current.windSpeed >= 20
+      : current.windSpeed >= 15
         ? "Winds too high for even spray coverage."
         : "Hold until the next dry, low-wind window."
 
@@ -166,8 +168,8 @@ async function fetchLive(location: ForecastLocation): Promise<WeatherForecast> {
   const params = new URLSearchParams({
     latitude: String(location.latitude),
     longitude: String(location.longitude),
-    current: "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,weather_code,is_day",
-    hourly: "temperature_2m,relative_humidity_2m,precipitation_probability,precipitation,wind_speed_10m",
+    current: "temperature_2m,relative_humidity_2m,precipitation,wind_speed_10m,wind_direction_10m,weather_code,is_day",
+    hourly: "temperature_2m,relative_humidity_2m,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m",
     forecast_days: "3",
     timezone: location.timezone || "auto",
   })
@@ -190,6 +192,7 @@ async function fetchLive(location: ForecastLocation): Promise<WeatherForecast> {
     humidity: Math.round(c.relative_humidity_2m),
     precipitation: Number(c.precipitation) || 0,
     windSpeed: Math.round(c.wind_speed_10m),
+    windDirection: Math.round(c.wind_direction_10m) || 0,
     weatherCode: Number(c.weather_code) || 0,
     description: describeWeatherCode(Number(c.weather_code) || 0),
     isDay: Boolean(c.is_day),
@@ -208,6 +211,7 @@ async function fetchLive(location: ForecastLocation): Promise<WeatherForecast> {
       rainProbability: Math.round(raw.hourly.precipitation_probability?.[i] ?? 0),
       precipitation: Number(raw.hourly.precipitation?.[i]) || 0,
       windSpeed: Math.round(raw.hourly.wind_speed_10m[i]),
+      windDirection: Math.round(raw.hourly.wind_direction_10m?.[i]) || 0,
     })
     if (hourly.length >= 48) break
   }
@@ -239,6 +243,7 @@ function buildFallback(location: ForecastLocation): WeatherForecast {
     const rainProbability = showerWindow ? 55 + ((i * 7) % 25) : 10 + ((i * 5) % 20)
     const precipitation = showerWindow ? Number((0.6 + ((i * 3) % 10) / 10).toFixed(1)) : 0
     const windSpeed = 8 + ((i * 3) % 10)
+    const windDirection = 135
     hourly.push({
       time: new Date(now + i * 3600 * 1000).toISOString(),
       temperature: temp,
@@ -246,6 +251,7 @@ function buildFallback(location: ForecastLocation): WeatherForecast {
       rainProbability,
       precipitation,
       windSpeed,
+      windDirection,
     })
   }
   const first = hourly[0]
@@ -254,6 +260,7 @@ function buildFallback(location: ForecastLocation): WeatherForecast {
     humidity: first.humidity,
     precipitation: first.precipitation,
     windSpeed: first.windSpeed,
+    windDirection: first.windDirection,
     weatherCode: first.rainProbability > 50 ? 61 : 2,
     description: first.rainProbability > 50 ? "Rain" : "Partly cloudy",
     isDay: startHour >= 6 && startHour < 19,
@@ -268,9 +275,46 @@ function buildFallback(location: ForecastLocation): WeatherForecast {
   }
 }
 
-// ── Module-level cache ───────────────────────────────────────────────────────
+// ── Shared cache: one forecast snapshot for every page ───────────────────────
+// Two failure modes made pages disagree (e.g. "rain now" vs "rain in 18h"):
+//  1. In Next.js dev, each route bundle can get its OWN instance of this module,
+//     so a plain module-level `let` is NOT shared — one route holds live weather
+//     while another still serves synthetic fallback.
+//  2. A transient fetch failure on one route dropped it to fallback while a
+//     sibling route kept a live snapshot.
+// Fix: hold the cache on `globalThis` (shared across every route bundle) AND
+// persist the last-good snapshot to disk, so any route that misses or fails its
+// own fetch serves the SAME snapshot instead of diverging to synthetic weather.
 const CACHE_TTL_MS = 30 * 60 * 1000 // refresh at most every 30 minutes
-let cached: { at: number; locationKey: string; data: WeatherForecast } | null = null
+const weatherCachePath = path.join(process.cwd(), "app/data/weather_cache.json")
+
+type WeatherCacheEntry = { at: number; locationKey: string; data: WeatherForecast }
+
+const weatherGlobal = globalThis as unknown as { __bhoomitraWeatherCache?: WeatherCacheEntry | null }
+
+function getSharedCache(): WeatherCacheEntry | null {
+  if (weatherGlobal.__bhoomitraWeatherCache) return weatherGlobal.__bhoomitraWeatherCache
+  // Cold module instance (fresh dev bundle): rehydrate from the disk snapshot so
+  // this route agrees with the route that fetched.
+  try {
+    if (!fs.existsSync(weatherCachePath)) return null
+    const parsed = JSON.parse(fs.readFileSync(weatherCachePath, "utf-8")) as WeatherCacheEntry
+    if (!parsed?.data || typeof parsed.at !== "number" || typeof parsed.locationKey !== "string") return null
+    weatherGlobal.__bhoomitraWeatherCache = parsed
+    return parsed
+  } catch {
+    return null
+  }
+}
+
+function setSharedCache(entry: WeatherCacheEntry) {
+  weatherGlobal.__bhoomitraWeatherCache = entry
+  try {
+    fs.writeFileSync(weatherCachePath, JSON.stringify(entry), "utf-8")
+  } catch {
+    // Disk persistence is best-effort; the global cache still unifies live routes.
+  }
+}
 
 export async function getForecast(force = false): Promise<WeatherForecast> {
   const location = getWeatherLocation()
@@ -282,15 +326,17 @@ export async function getForecast(force = false): Promise<WeatherForecast> {
     return buildFallback(location)
   }
 
+  const cached = getSharedCache()
   if (!force && cached && cached.locationKey === locationKey && Date.now() - cached.at < CACHE_TTL_MS) {
     return { ...cached.data, source: "cached" }
   }
   try {
     const live = await fetchLive(location)
-    cached = { at: Date.now(), locationKey, data: live }
+    setSharedCache({ at: Date.now(), locationKey, data: live })
     return live
   } catch (err) {
-    // Live fetch failed (offline / timeout). Serve last good cache, else fallback.
+    // Live fetch failed (offline / timeout). Serve the shared last-good snapshot
+    // (even if past TTL) so pages stay consistent; only fall back if none exists.
     if (cached && cached.locationKey === locationKey) return { ...cached.data, source: "cached" }
     return buildFallback(location)
   }

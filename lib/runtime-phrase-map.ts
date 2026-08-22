@@ -19,7 +19,7 @@ export const runtimePhraseMap: PhraseMap = {
     "Click on zones to view detailed information and control spraying": "विस्तृत जानकारी और स्प्रे नियंत्रण के लिए क्षेत्रों पर क्लिक करें",
     "Reconfigure Farm": "फार्म पुनः कॉन्फ़िगर करें",
     "Safety Kill Switch": "सुरक्षा किल स्विच",
-    "Live hardware lock, nozzle feedback, and sprayer path": "लाइव हार्डवेयर लॉक, नोजल फीडबैक और स्प्रेयर पथ",
+    "Emergency stop with live controller status": "लाइव कंट्रोलर स्थिति के साथ आपातकालीन स्टॉप",
     "Automation Ready": "ऑटोमेशन तैयार",
     "Smart Spray Control": "स्मार्ट स्प्रे नियंत्रण",
     "Manual zone override and automated distribution logic": "मैनुअल ज़ोन ओवरराइड और स्वचालित वितरण तर्क",

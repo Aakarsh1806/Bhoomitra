@@ -80,9 +80,34 @@ function normalise(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, "_")
 }
 
-export function getTelanganaOfflineRecommendation(disease: string) {
+function stripCropPrefix(value: string) {
+  const index = value.indexOf("___")
+  return index >= 0 ? value.slice(index + 3) : value
+}
+
+export function getTelanganaOfflineRecommendation(disease: string, crop?: string) {
   const normalisedDisease = normalise(disease)
-  return telanganaPesticideCatalog.find(entry => normalise(entry.disease) === normalisedDisease) ?? null
+  const exact = telanganaPesticideCatalog.find(entry => normalise(entry.disease) === normalisedDisease)
+  if (exact) return exact
+
+  // The live ML service returns a crop-stripped disease key (e.g.
+  // "Esca_(Black_Measles)", not the catalog's "Grape___Esca_(Black_Measles)"),
+  // so the exact match above never fires for a real scan — this catalog's
+  // cultural-only entries (Esca, viral "no curative chemical" cases) would
+  // otherwise silently fall through to a generic fungicide match. Fall back
+  // to the disease-key suffix, preferring the entry whose crop matches the
+  // farmer-selected crop when more than one crop shares a disease name (e.g.
+  // Early_blight on both Potato and Tomato).
+  const strippedInput = normalise(stripCropPrefix(disease))
+  const suffixMatches = telanganaPesticideCatalog.filter(
+    (entry) => normalise(stripCropPrefix(entry.disease)) === strippedInput,
+  )
+  if (suffixMatches.length === 0) return null
+  if (crop) {
+    const cropMatch = suffixMatches.find((entry) => normalise(entry.crop) === normalise(crop))
+    if (cropMatch) return cropMatch
+  }
+  return suffixMatches[0]
 }
 
 export function getCatalogCoverage() {

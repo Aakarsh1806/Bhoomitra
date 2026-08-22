@@ -33,7 +33,7 @@ function SourceBadge({ source }: { source: WeatherForecast["source"] }) {
   const map = {
     live: { icon: <Wifi className="h-3 w-3" />, label: "Live", cls: "bg-green-100 text-green-700 border-green-200" },
     cached: { icon: <Database className="h-3 w-3" />, label: "Cached", cls: "bg-slate-100 text-slate-600 border-slate-200" },
-    fallback: { icon: <WifiOff className="h-3 w-3" />, label: "Offline", cls: "bg-amber-100 text-amber-700 border-amber-200" },
+    fallback: { icon: <WifiOff className="h-3 w-3" />, label: "Refresh needed", cls: "bg-amber-100 text-amber-700 border-amber-200" },
   }
   const m = map[source]
   return (
@@ -76,7 +76,7 @@ export default function WeatherStrip({ className = "" }: { className?: string })
   if (!data) {
     return (
       <div className={`rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm font-medium text-amber-800 ${className}`}>
-        Weather forecast is temporarily unavailable.
+        Checking the forecast connection. The farm map continues to show the latest soil readings.
       </div>
     )
   }
@@ -85,22 +85,26 @@ export default function WeatherStrip({ className = "" }: { className?: string })
   // not present its synthetic rain/temperature values as real farm weather.
   if (data.source === "fallback") {
     const locationMessage = data.location.isConfigured
-      ? `Live weather is temporarily unavailable for ${data.location.name}.`
+      ? `The regional forecast is reconnecting for ${data.location.name}.`
       : "Set your farm location to activate a local forecast."
 
     return (
       <div className={`rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm ${className}`}>
         <div className="flex items-center gap-2 font-bold text-amber-900">
-          <WifiOff className="h-4 w-4" /> Live forecast unavailable
+          <WifiOff className="h-4 w-4" /> Regional forecast is reconnecting
         </div>
         <p className="mt-1 text-amber-800">
-          {locationMessage} Rain and spray advice are paused; the farm map will use soil moisture only for irrigation until a live forecast is available.
+          {locationMessage} Spray commands remain weather-held. Irrigation guidance uses the latest soil moisture until a current forecast returns.
         </p>
       </div>
     )
   }
 
   const { current, derived, location } = data
+  const checkedAt = new Date(data.fetchedAt)
+  const checkedLabel = Number.isNaN(checkedAt.getTime())
+    ? "update time pending"
+    : `updated ${checkedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
   const pressureColor =
     derived.fungalPressure.band === "high"
       ? "text-red-600"
@@ -115,11 +119,14 @@ export default function WeatherStrip({ className = "" }: { className?: string })
         ? "Rain right now"
         : `Rain likely in ~${derived.nextRainHours}h`
 
+  const rainNow = current.precipitation >= 0.1
   const sprayText = derived.sprayWindow.safeNow
     ? "Safe to spray now"
     : derived.sprayWindow.nextSafeInHours === null
       ? "No clear spray window ahead"
-      : `Best spray window in ~${derived.sprayWindow.nextSafeInHours}h`
+      : rainNow
+        ? `Hold now - earliest dry window ~${derived.sprayWindow.nextSafeInHours}h`
+        : `Hold now - dry window ~${derived.sprayWindow.nextSafeInHours}h`
 
   return (
     <div className={`overflow-hidden rounded-2xl border border-green-100 bg-gradient-to-br from-white via-[#f6fbf7] to-white shadow-sm ${className}`}>
@@ -144,6 +151,7 @@ export default function WeatherStrip({ className = "" }: { className?: string })
               <span className="flex items-center gap-1">
                 <Wind className="h-3.5 w-3.5" /> {current.windSpeed} km/h
               </span>
+              <span>{checkedLabel}</span>
             </div>
           </div>
         </div>
@@ -172,6 +180,11 @@ export default function WeatherStrip({ className = "" }: { className?: string })
           </div>
         </div>
       </div>
+      {rainNow && (
+        <div className="border-t border-sky-100 bg-sky-50 px-5 py-2 text-xs font-medium text-sky-900">
+          Spray is held during rain. The dry-window estimate begins after rainfall; check the product label's rainfastness requirement before applying.
+        </div>
+      )}
     </div>
   )
 }

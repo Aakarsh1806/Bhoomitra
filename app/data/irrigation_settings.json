@@ -2,9 +2,9 @@
   "dryThreshold": 40,
   "wetThreshold": 60,
   "ripeningMode": false,
-  "cycleOnMs": 600000,
-  "cycleOffMs": 3000000,
-  "maxDurationMs": 21600000,
+  "cycleOnMs": 3000,
+  "cycleOffMs": 0,
+  "maxDurationMs": 3000,
   "unchangedSensorMs": 1800000,
   "minChangePercent": 0.5
 }

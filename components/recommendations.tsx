@@ -17,6 +17,7 @@ import { Separator } from "@/components/ui/separator"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { toast } from "sonner"
+import SprayWindowTimeline from "@/components/spray-window-timeline"
 import {
   Brain,
   Lightbulb,
@@ -59,6 +60,8 @@ interface ApiRec {
   chemical?: string
   dosage?: string
   disease?: string
+  spreadLeverage?: number
+  scannedAt?: string
 }
 
 interface Insights {
@@ -78,8 +81,44 @@ interface Ctx {
   fungalPressure: { score: number; band: "low" | "moderate" | "high"; drivers: string[] }
   sprayWindow: { safeNow: boolean; nextSafeInHours: number | null; reason: string }
   climateLive: boolean
+  climateLastValidAt?: number | null
+  weatherFetchedAt?: string | null
   location: string
   locationConfigured: boolean
+}
+
+interface RecommendationPayload {
+  generatedAt?: string
+  recommendations: ApiRec[]
+  insights: Insights
+  context: Ctx
+}
+
+interface SavedRecommendationPayload {
+  savedAt: string
+  data: RecommendationPayload
+}
+
+const RECOMMENDATIONS_CACHE_KEY = "bhoomitra:last-recommendation-plan"
+const RECOMMENDATIONS_TIMEOUT_MS = 5_000
+
+function readSavedPlan(): SavedRecommendationPayload | null {
+  if (typeof window === "undefined") return null
+
+  try {
+    const raw = window.sessionStorage.getItem(RECOMMENDATIONS_CACHE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as SavedRecommendationPayload
+    return parsed?.data?.recommendations ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function savePlan(data: RecommendationPayload) {
+  if (typeof window === "undefined") return
+  const payload: SavedRecommendationPayload = { savedAt: new Date().toISOString(), data }
+  window.sessionStorage.setItem(RECOMMENDATIONS_CACHE_KEY, JSON.stringify(payload))
 }
 
 const typeColor = (type: string) =>
@@ -104,30 +143,68 @@ const typeIcon = (type: string) =>
 
 const priorityVariant = (p: string) => (p === "high" ? "destructive" : p === "medium" ? "secondary" : "outline")
 
+function formatScanTime(iso?: string) {
+  if (!iso) return null
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return null
+  return date.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: true })
+}
+
 export default function Recommendations() {
   const { implementedRecords, addImplementationRecord, clearImplementationRecords } = useFarmStore()
-  const [data, setData] = useState<{ recommendations: ApiRec[]; insights: Insights; context: Ctx } | null>(null)
+  // sessionStorage is only readable after mount — reading it in a lazy
+  // useState initializer would make the client's first hydration render
+  // diverge from the server's (server always sees no cache), which triggers
+  // a hydration mismatch. So these all start deterministically empty and are
+  // populated from the cache in the mount effect below.
+  const [data, setData] = useState<RecommendationPayload | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [loadNotice, setLoadNotice] = useState<string | null>(null)
+  const [savedAt, setSavedAt] = useState<string | null>(null)
   const [implementing, setImplementing] = useState<string | null>(null)
   const [selectedRec, setSelectedRec] = useState<ApiRec | null>(null)
   const [isDetailsOpen, setIsDetailsOpen] = useState(false)
 
   const load = useCallback(async (isRefresh = false) => {
     if (isRefresh) setRefreshing(true)
+    const controller = new AbortController()
+    const timeout = window.setTimeout(() => controller.abort(), RECOMMENDATIONS_TIMEOUT_MS)
     try {
-      const res = await fetch("/api/recommendations")
-      const d = await res.json()
+      const res = await fetch("/api/recommendations", { signal: controller.signal })
+      if (!res.ok) throw new Error("Recommendation request failed")
+      const d = (await res.json()) as RecommendationPayload
+      if (!Array.isArray(d.recommendations)) throw new Error("Recommendation response is incomplete")
       setData(d)
+      savePlan(d)
+      const saved = new Date().toISOString()
+      setSavedAt(saved)
+      setLoadNotice(null)
     } catch {
-      toast.error("Could not load recommendations")
+      const saved = readSavedPlan()
+      if (saved) {
+        setData(saved.data)
+        setSavedAt(saved.savedAt)
+        setLoadNotice("Showing the latest saved farm plan while weather updates. Spray actions stay weather-checked.")
+      } else {
+        setLoadNotice("Preparing the first saved farm plan. You can retry the update now.")
+      }
+      if (isRefresh) toast.info("Keeping the latest saved plan while the update retries")
     } finally {
+      window.clearTimeout(timeout)
       setLoading(false)
       setRefreshing(false)
     }
   }, [])
 
   useEffect(() => {
+    const saved = readSavedPlan()
+    if (saved) {
+      setData(saved.data)
+      setSavedAt(saved.savedAt)
+      setLoadNotice(`Showing the latest saved farm plan from ${new Date(saved.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`)
+      setLoading(false)
+    }
     load()
   }, [load])
 
@@ -138,28 +215,25 @@ export default function Recommendations() {
   const urgent = recommendations.filter((r) => r.type === "urgent")
   const urgentCount = urgent.length
   const importantCount = recommendations.filter((r) => r.type === "important").length
+  const priorityTreatment = recommendations.find((recommendation) => recommendation.kind === "treatment")
 
   const implement = async (rec: ApiRec) => {
+    if (rec.kind === "treatment") {
+      window.location.assign(`/dashboard/autospray?zone=${encodeURIComponent(rec.zone)}&detection=${encodeURIComponent(rec.detectionId || "")}`)
+      return
+    }
+    if (rec.kind !== "irrigation") {
+      setSelectedRec(rec)
+      setIsDetailsOpen(true)
+      return
+    }
     setImplementing(rec.id)
     try {
-      const res =
-        rec.kind === "treatment"
-          ? await fetch("/api/spray", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                zoneId: rec.zone,
-                detectionId: rec.detectionId,
-                disease: rec.disease,
-                chemical: rec.chemical,
-                dosage: rec.dosage,
-              }),
-            })
-          : await fetch("/api/hydrate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ zoneId: rec.zone }),
-            })
+      const res = await fetch("/api/hydrate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ zoneId: rec.zone }),
+      })
 
       const result = await res.json().catch(() => ({}))
 
@@ -172,7 +246,7 @@ export default function Recommendations() {
           zone: rec.zone,
           impact: rec.estimatedImpact,
         })
-        toast.success(rec.kind === "treatment" ? `Spray command dispatched to ${rec.zone}` : `Irrigation started on ${rec.zone}`)
+        toast.success(`Water pulse queued for ${rec.zone}`)
         setIsDetailsOpen(false)
         await load(true)
       } else if (res.status === 409) {
@@ -191,7 +265,48 @@ export default function Recommendations() {
     }
   }
 
-  if (loading) {
+  if (loading && !data) {
+    return (
+      <div className="min-h-screen bg-background p-4 md:p-6">
+        <div className="mx-auto max-w-7xl space-y-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h1 className="flex items-center gap-3 text-3xl font-black text-[#1a2e1d]">
+                <Brain className="h-8 w-8 text-green-600" />
+                Farm action plan
+              </h1>
+              <p className="mt-1 text-muted-foreground">Checking field observations, the latest farm-station reading, and local weather.</p>
+            </div>
+            <Loader2 className="h-6 w-6 animate-spin text-green-600" />
+          </div>
+          <div className="grid gap-4 md:grid-cols-4">
+            {[0, 1, 2, 3].map((index) => <div key={index} className="h-28 animate-pulse rounded-xl bg-slate-100" />)}
+          </div>
+          <div className="grid gap-4 lg:grid-cols-2">
+            {[0, 1].map((index) => (
+              <div key={index} className="space-y-4 rounded-2xl border bg-white p-6 shadow-sm">
+                <div className="h-5 w-2/3 animate-pulse rounded bg-slate-100" />
+                <div className="h-4 w-full animate-pulse rounded bg-slate-100" />
+                <div className="h-4 w-5/6 animate-pulse rounded bg-slate-100" />
+                <div className="h-10 w-36 animate-pulse rounded bg-slate-100" />
+              </div>
+            ))}
+          </div>
+          {loadNotice && (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <span>{loadNotice}</span>
+              <Button variant="outline" className="border-amber-300 bg-white" onClick={() => load(true)} disabled={refreshing}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+                Retry update
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  if (loading && false) {
     return (
       <div className="flex min-h-[400px] flex-col items-center justify-center gap-4">
         <Loader2 className="h-8 w-8 animate-spin text-green-600" />
@@ -207,7 +322,15 @@ export default function Recommendations() {
         ? "text-amber-600"
         : "text-green-600"
 
-  const renderCard = (rec: ApiRec) => (
+  const renderCard = (rec: ApiRec) => {
+    const actionBlocked = rec.kind === "irrigation" && rec.weatherGated
+    const actionLabel = rec.kind === "treatment"
+        ? rec.weatherGated ? "Review spray safety" : "Open spray plan"
+        : rec.kind === "irrigation"
+          ? actionBlocked ? "Weather hold" : "Queue water pulse"
+          : "Review response"
+
+    return (
     <Card key={rec.id} className="relative shadow-sm transition-all duration-300 hover:shadow-md">
       <CardHeader>
         <div className="flex items-start justify-between gap-3">
@@ -231,6 +354,9 @@ export default function Recommendations() {
                 )}
               </div>
               <CardDescription className="text-base text-slate-600">{rec.description}</CardDescription>
+              {rec.scannedAt && formatScanTime(rec.scannedAt) && (
+                <p className="mt-1 text-xs text-muted-foreground">Scanned {formatScanTime(rec.scannedAt)}</p>
+              )}
             </div>
           </div>
         </div>
@@ -279,7 +405,7 @@ export default function Recommendations() {
         <div className="flex items-center gap-2 pt-1">
           <Button
             onClick={() => implement(rec)}
-            disabled={implementing === rec.id}
+            disabled={implementing === rec.id || actionBlocked}
             className="bg-[#3a7d44] text-white hover:bg-[#2e6336]"
           >
             {implementing === rec.id ? (
@@ -289,7 +415,7 @@ export default function Recommendations() {
             ) : (
               <Droplets className="mr-2 h-4 w-4" />
             )}
-            {rec.kind === "treatment" ? "Dispatch spray" : "Start irrigation"}
+            {actionLabel}
           </Button>
           <Button
             variant="outline"
@@ -304,7 +430,8 @@ export default function Recommendations() {
         </div>
       </CardContent>
     </Card>
-  )
+    )
+  }
 
   return (
     <div className="min-h-screen bg-background p-4 md:p-6">
@@ -317,7 +444,7 @@ export default function Recommendations() {
               AI Recommendations
             </h1>
             <p className="mt-1 text-muted-foreground">
-              Fuses your ML diagnosis, live farm sensors, and the weather forecast into one prioritized action list.
+              A prioritized farm plan built from field observations, the latest station reading, and local weather.
             </p>
           </div>
           <Button variant="outline" onClick={() => load(true)} disabled={refreshing} className="bg-transparent">
@@ -326,7 +453,20 @@ export default function Recommendations() {
           </Button>
         </div>
 
+        {/* Prescriptive AI: when to act — the 48h spray-window timeline */}
+        <SprayWindowTimeline />
+
         {/* Fusion context strip — makes the "why" visible and honest */}
+        {loadNotice && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            <span>{loadNotice}</span>
+            <Button variant="ghost" size="sm" onClick={() => load(true)} disabled={refreshing}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${refreshing ? "animate-spin" : ""}`} />
+              Retry update
+            </Button>
+          </div>
+        )}
+
         {context && (
           <div className="grid grid-cols-2 gap-3 rounded-2xl border border-green-100 bg-white p-4 shadow-sm md:grid-cols-4">
             <div>
@@ -359,11 +499,33 @@ export default function Recommendations() {
             </div>
             <div>
               <p className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-green-700">
-                <Gauge className="h-3 w-3" /> Live leaf sensor
+                <Gauge className="h-3 w-3" /> Farm sensor reference
               </p>
-              <p className="mt-0.5 text-sm font-bold text-[#1a2e1d]">{context.climateLive ? "Streaming" : "Offline"}</p>
+              <p className="mt-0.5 text-sm font-bold text-[#1a2e1d]">{context.climateLive ? "Live now" : "Latest saved reading"}</p>
             </div>
           </div>
+        )}
+
+        {priorityTreatment && (
+          <Card className="overflow-hidden border-emerald-200 bg-gradient-to-r from-emerald-950 via-[#245f31] to-[#3a7d44] text-white shadow-lg">
+            <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-200">Top containment priority · model projection</p>
+                <h2 className="mt-1 text-2xl font-black">{priorityTreatment.title}</h2>
+                <p className="mt-1 max-w-3xl text-sm text-emerald-50">{priorityTreatment.action}</p>
+                {priorityTreatment.spreadLeverage != null && priorityTreatment.spreadLeverage > 0 && (
+                  <p className="mt-2 text-xs font-semibold text-emerald-100">Containing this zone carries ~{priorityTreatment.spreadLeverage.toFixed(1)} projected secondary-infection leverage over the next five days.</p>
+                )}
+              </div>
+              <Button
+                className="bg-white text-[#1f582b] hover:bg-emerald-50"
+                onClick={() => implement(priorityTreatment)}
+              >
+                <Zap className="mr-2 h-4 w-4" />
+                {priorityTreatment.weatherGated ? "Review spray safety" : "Open spray plan"}
+              </Button>
+            </CardContent>
+          </Card>
         )}
 
         {/* Summary cards */}
@@ -405,7 +567,7 @@ export default function Recommendations() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-[#3a7d44]">
-                {insights?.avgDetectionConfidence != null ? `${insights.avgDetectionConfidence}%` : "—"}
+                {insights?.avgDetectionConfidence != null ? `${insights.avgDetectionConfidence}%` : "No scan yet"}
               </div>
               <p className="text-xs text-muted-foreground">Across recorded detections</p>
             </CardContent>
@@ -528,7 +690,7 @@ export default function Recommendations() {
                   <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
                     <p className="text-xs uppercase tracking-wide text-slate-500">Containment rate</p>
                     <p className="mt-1 text-2xl font-black text-[#1a2e1d]">
-                      {insights?.containmentRate != null ? `${insights.containmentRate}%` : "—"}
+                      {insights?.containmentRate != null ? `${insights.containmentRate}%` : "No outcome yet"}
                     </p>
                   </div>
                   <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
@@ -575,7 +737,7 @@ export default function Recommendations() {
 
       {/* Details dialog */}
       <Dialog open={isDetailsOpen} onOpenChange={setIsDetailsOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           {selectedRec && (
             <>
               <DialogHeader>
@@ -593,6 +755,9 @@ export default function Recommendations() {
                 </div>
                 <DialogTitle className="text-2xl">{selectedRec.title}</DialogTitle>
                 <DialogDescription className="pt-2 text-base">{selectedRec.description}</DialogDescription>
+                {selectedRec.scannedAt && formatScanTime(selectedRec.scannedAt) && (
+                  <p className="text-xs text-muted-foreground">Scanned {formatScanTime(selectedRec.scannedAt)}</p>
+                )}
               </DialogHeader>
 
               <div className="grid gap-6 py-2">
@@ -641,18 +806,26 @@ export default function Recommendations() {
                   <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
                     Close
                   </Button>
-                  <Button
-                    onClick={() => implement(selectedRec)}
-                    disabled={implementing === selectedRec.id}
-                    className="bg-[#3a7d44] hover:bg-[#2e6336]"
-                  >
-                    {implementing === selectedRec.id ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Check className="mr-2 h-4 w-4" />
-                    )}
-                    {selectedRec.kind === "treatment" ? "Dispatch spray" : "Start irrigation"}
-                  </Button>
+                  {/* Crop-review and cultural-guidance cards have no queueable
+                      action here — the real next step (rescan, structural
+                      management) happens outside this dialog, so only
+                      treatment/irrigation kinds get a second button. */}
+                  {(selectedRec.kind === "treatment" || selectedRec.kind === "irrigation") && (
+                    <Button
+                      onClick={() => implement(selectedRec)}
+                      disabled={implementing === selectedRec.id || (selectedRec.kind === "irrigation" && selectedRec.weatherGated)}
+                      className="bg-[#3a7d44] hover:bg-[#2e6336]"
+                    >
+                      {implementing === selectedRec.id ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        <Check className="mr-2 h-4 w-4" />
+                      )}
+                      {selectedRec.kind === "irrigation"
+                        ? selectedRec.weatherGated ? "Weather hold" : "Queue water pulse"
+                        : "Open spray plan"}
+                    </Button>
+                  )}
                 </div>
               </DialogFooter>
             </>

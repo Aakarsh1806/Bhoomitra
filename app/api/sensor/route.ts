@@ -4,18 +4,17 @@ import {
   zoneHistory,
   simulationEnabledRef,
   pendingCommands,
-  updateHardwareState,
-  recordActivity,
+  markCommandDispatched,
+  recordControllerFeedback,
   markSensorError,
   updateSensorRuntime,
   updateFarmClimate,
   getFarmClimate,
-  startIrrigationCycle,
-  tickIrrigationCycle,
   irrigationSettings,
 } from "../zones/data"
 import { getForecast } from "@/app/lib/weatherService"
 import { decideFarmActions } from "@/app/lib/farmDecisionService"
+import { readDB } from "@/app/lib/database"
 
 export async function POST(req: Request) {
   const body = await req.json()
@@ -31,21 +30,19 @@ export async function POST(req: Request) {
     simulationEnabledRef.value = false
   }
 
-  if (nozzleStatus) {
-    updateHardwareState({
-      nozzleStatus,
-      awaitingFeedback: nozzleStatus === "pending",
-      lastFeedback: feedbackMessage || (nozzleStatus === "open" ? "Nozzle opened successfully" : nozzleStatus === "clogged" ? "Nozzle clogged" : null),
-      lastFeedbackAt: new Date().toISOString(),
-      currentPath: Array.isArray(currentPath) ? currentPath : zoneId ? [zoneId] : [],
-      activeZoneId: zoneId || null,
-    })
-  }
-
   const zoneIndex = zones.findIndex(z => z.id === zoneId)
 
   if (zoneIndex === -1) {
     return NextResponse.json({ message: "Zone not found" }, { status: 404 })
+  }
+
+  if (nozzleStatus === "idle" || nozzleStatus === "pending" || nozzleStatus === "open" || nozzleStatus === "closed" || nozzleStatus === "clogged") {
+    recordControllerFeedback(
+      zoneId,
+      nozzleStatus,
+      feedbackMessage,
+      Array.isArray(currentPath) ? currentPath : [zoneId],
+    )
   }
 
   const moistureNum = Number(soilMoisture)
@@ -77,16 +74,32 @@ export async function POST(req: Request) {
   // climate/VPD, while the moisture reading remains scoped to this zone.
   const climate = updateFarmClimate(nextTemperature, nextHumidity)
 
-  // Calculate status
-  let status: "healthy" | "warning" | "critical"
+  // Keep the displayed zone state aligned with both the soil probe and any
+  // active disease record. A fresh moisture reading must not turn a zone with
+  // a high-severity diagnosis into a misleading "healthy" tile.
+  let moistureStatus: "healthy" | "warning" | "critical"
 
   if (nextSoilMoisture < 25) {
-    status = "critical"
+    moistureStatus = "critical"
   } else if (nextSoilMoisture < 40) {
-    status = "warning"
+    moistureStatus = "warning"
   } else {
-    status = "healthy"
+    moistureStatus = "healthy"
   }
+
+  const activeDetection = (readDB().detections || []).find((d: any) =>
+    d.zoneId === zoneId &&
+    d.status === "active" &&
+    d.cropMatch !== "review" &&
+    !String(d.diseaseName || d.disease || "").toLowerCase().includes("healthy"),
+  )
+  const diseaseStatus = activeDetection?.severityLevel === "high"
+    ? "critical"
+    : activeDetection?.severityLevel === "moderate" || activeDetection?.severityLevel === "medium"
+      ? "warning"
+      : "healthy"
+  const statusRank = { healthy: 0, warning: 1, critical: 2 }
+  const status = statusRank[diseaseStatus] > statusRank[moistureStatus] ? diseaseStatus : moistureStatus
 
   const healthScore = Math.max(
     40,
@@ -110,11 +123,9 @@ export async function POST(req: Request) {
     weather,
   })
 
-  if (nextSoilMoisture < irrigationSettings.dryThreshold) {
-    startIrrigationCycle(zoneId, false, farmDecision.irrigation)
-  }
-
-  tickIrrigationCycle(zoneId)
+  // A sensor update can recommend irrigation, but it must not start a pump by
+  // itself. The farmer initiates a pulse plan from the map or recommendations
+  // after seeing the weather-aware reason.
 
   // 📊 Update history
 const historyEntry = zoneHistory.find(h => h.zoneId === zoneId)
@@ -138,21 +149,14 @@ if (historyEntry) {
 
   if (command) {
     const now = new Date().toISOString()
-    // ✅ SYNC WITH HARDWARE: Update the zone "lastSprayed" the moment it is DISPATCHED
-    if (zones[zoneIndex]) {
-      zones[zoneIndex].lastSprayed = now
-    }
+    // Move this queued instruction into the controller's active state. A pump
+    // action is logged only after the board reports that its pulse has closed.
+    markCommandDispatched(zoneId, command)
 
     console.log(`\x1b[33m[SERVER -> IOT]\x1b[0m 🚀 DISPATCHING COMMAND: ${command.toUpperCase()} to ${zoneId} at ${now}`)
     
-    // Create activity log entry
-    if (command !== "stop") {
-      recordActivity({
-        type: command === "water" ? "water" : "spray",
-        zoneId,
-        timestamp: now,
-      })
-    }
+    // Activity history is written only when controller feedback confirms a
+    // closed pulse, not when a command merely leaves the pending queue.
   }
 
   return NextResponse.json({ 

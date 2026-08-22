@@ -358,6 +358,12 @@ def predict():
     predicted_disease = get_translated_name(disease_key, language)
     confidence = float(predictions[predicted_index])
 
+    # The crop family lives in the "Crop___Disease" class label. Return it
+    # explicitly so the backend can run the crop-consistency check — otherwise
+    # it has to guess the crop from the disease name and flags every scan as a
+    # mismatch.
+    predicted_crop = predicted_disease_raw.split('___')[0] if '___' in predicted_disease_raw else None
+
     top3 = extract_top_predictions(predictions, class_names_for_model, language)
 
     return jsonify({
@@ -367,6 +373,7 @@ def predict():
         "disease": predicted_disease,
         "englishDisease": disease_key,
         "canonicalDisease": disease_key,
+        "crop": predicted_crop,
         "confidence": confidence,
         "language": language,
         "top3": top3

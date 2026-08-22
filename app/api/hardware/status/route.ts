@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server"
-import { hardwareState, updateHardwareState } from "../../zones/data"
+import { hardwareState, recordControllerFeedback, updateHardwareState } from "../../zones/data"
 
 export async function GET() {
   return NextResponse.json(hardwareState)
@@ -20,11 +20,21 @@ export async function POST(req: Request) {
       updateHardwareState({ currentPath: Array.isArray(body.currentPath) ? body.currentPath : [] })
     }
 
-    if (body.nozzleStatus) {
-      updateHardwareState({
-        nozzleStatus: body.nozzleStatus,
-        awaitingFeedback: body.nozzleStatus === "pending",
-      })
+    if (body.nozzleStatus === "idle" || body.nozzleStatus === "pending" || body.nozzleStatus === "open" || body.nozzleStatus === "closed" || body.nozzleStatus === "clogged") {
+      const zoneId = typeof body.zoneId === "string" ? body.zoneId : hardwareState.activeZoneId
+      if (zoneId) {
+        recordControllerFeedback(
+          zoneId,
+          body.nozzleStatus,
+          typeof body.feedbackMessage === "string" ? body.feedbackMessage : undefined,
+          Array.isArray(body.currentPath) ? body.currentPath : undefined,
+        )
+      } else {
+        updateHardwareState({
+          nozzleStatus: body.nozzleStatus,
+          awaitingFeedback: body.nozzleStatus === "pending" || body.nozzleStatus === "open",
+        })
+      }
     }
 
     if (body.feedbackMessage) {

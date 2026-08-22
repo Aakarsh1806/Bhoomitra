@@ -33,6 +33,7 @@ export interface ZoneData {
   col: number
   status: ZoneStatus
   lastSprayed: string
+  lastIrrigated?: string
   soilMoisture: number
   /** Legacy compatibility mirrors of the one fixed DHT11 farm station. */
   temperature: number
@@ -58,6 +59,9 @@ export interface ZoneData {
   severityScore?: number
   severityLevel?: "low" | "moderate" | "high"
   lastAnalyzed?: string
+  activeDetection?: boolean
+  /** A scan whose selected crop and model crop family do not agree. */
+  cropReview?: boolean
   mlModelId?: string | null
   mlModelVersion?: string | null
 
@@ -81,6 +85,12 @@ export type DetectionEvent = {
   treatedAt: string | null
   postSeverityScore: number | null
   linkedSprayId: string | null
+  /** Crop selected by the farmer for the photographed leaf. */
+  scanCrop?: string
+  /** Crop family parsed from the classifier label, when supplied by the model. */
+  modelCrop?: string
+  /** A mismatch stays visible for review but cannot create a spray recommendation. */
+  cropMatch?: "matched" | "review" | "not_applicable"
   modelId?: string | null
   modelVersion?: string | null
 }

@@ -19,6 +19,11 @@ import {
   isValidClimateReading,
   type FarmClimateSnapshot,
 } from "@/app/lib/farmDecisionService"
+import {
+  DEMO_CONTROL_ZONE_IDS,
+  IRRIGATION_PULSE_MS,
+  isDemoControlZone,
+} from "@/app/lib/demoHardware"
 
 const globalMemory = global as any
 
@@ -95,14 +100,21 @@ const farmerProfilePath = path.join(process.cwd(), "app/data/farmer_profile.json
 const irrigationSettingsPath = path.join(process.cwd(), "app/data/irrigation_settings.json")
 const farmClimatePath = path.join(process.cwd(), "app/data/farm_climate.json")
 
+// The product spec and physical pilot both fix the farm map at 12 zones
+// (A1-A6, B1-B6). This is a hard constant, not a function of acreage.
+const CANONICAL_ZONE_COUNT = 12
+const CANONICAL_ZONE_COLS = 6
+
 const DEFAULT_SETTINGS: IrrigationSettings = {
   dryThreshold: 40,
   wetThreshold: 60,
   ripeningMode: false,
   singlePumpMode: true,
-  cycleOnMs: 10 * 60 * 1000,
-  cycleOffMs: 50 * 60 * 1000,
-  maxDurationMs: 6 * 60 * 60 * 1000,
+  // The physical prototype executes one three-second pulse per queued
+  // irrigation command. Longer repeating cycles would misrepresent it.
+  cycleOnMs: IRRIGATION_PULSE_MS,
+  cycleOffMs: 0,
+  maxDurationMs: IRRIGATION_PULSE_MS,
   unchangedSensorMs: 30 * 60 * 1000,
   minChangePercent: 0.5,
 }
@@ -142,6 +154,11 @@ function readIrrigationSettings(): IrrigationSettings {
       ...parsed,
       dryThreshold: clamp(Number(parsed?.dryThreshold ?? DEFAULT_SETTINGS.dryThreshold), 5, 95),
       wetThreshold: clamp(Number(parsed?.wetThreshold ?? DEFAULT_SETTINGS.wetThreshold), 5, 95),
+      // Migrate the old 10m-on/50m-off demo configuration in memory. A
+      // three-second hardware pulse is the only honest actuator duration.
+      cycleOnMs: IRRIGATION_PULSE_MS,
+      cycleOffMs: 0,
+      maxDurationMs: IRRIGATION_PULSE_MS,
     }
   } catch {
     return { ...DEFAULT_SETTINGS }
@@ -291,7 +308,13 @@ function generateZones(profile: FarmProfile, settings: IrrigationSettings): Zone
   const zoneList: ZoneData[] = []
   const farmerProfile = readFarmerProfile()
   const acres = farmerProfile?.acres ?? profile.acres
-  const zoneCount = farmerProfile?.zoneCount ?? farmerProfile?.zones ?? profile.totalZones
+  // The farm map is a fixed 12-zone layout (A1-A6, B1-B6): only A1-A4 carry a
+  // physical pump, and the product spec forbids ever showing a different zone
+  // count (e.g. 24). Zone count must never be derived from acreage or a stale
+  // profile.totalZones — both can disagree with this fixed grid and produce
+  // wrong ids like C1/C2 instead of A6/B6. Acreage still drives plant density.
+  const zoneCount = CANONICAL_ZONE_COUNT
+  const cols = CANONICAL_ZONE_COLS
   const zoneAreaSqYards = (acres * 4840) / Math.max(1, zoneCount)
   const densityDivisor = getPlantingDensityDivisor(farmerProfile?.primaryCrop)
   const dynamicPlantCount = Math.max(1, Math.floor(zoneAreaSqYards / densityDivisor))
@@ -309,8 +332,8 @@ function generateZones(profile: FarmProfile, settings: IrrigationSettings): Zone
   }
 
   for (let i = 0; i < zoneCount; i++) {
-    const row = Math.floor(i / profile.cols)
-    const col = i % profile.cols
+    const row = Math.floor(i / cols)
+    const col = i % cols
     const rowLabel = getRowLabel(row)
     const id = `${rowLabel}${col + 1}`
 
@@ -413,7 +436,14 @@ export function updateHardwareState(partial: Partial<HardwareState>) {
   return hardwareState
 }
 
-const defaultProfile = buildFarmProfile(Number(process.env.FARM_ACRES ?? 6), Number(process.env.FARM_ZONE_SIZE_ACRES ?? 0.25))
+// Acreage must come from the SAME source the map and farmer profile read
+// (farmer_profile.json), or cross-page numbers disagree (e.g. map shows 2 ac
+// while analytics shows the env/default 6). The persisted profile wins.
+const persistedFarmerAcres = readFarmerProfile()?.acres
+const defaultProfile = buildFarmProfile(
+  Number(persistedFarmerAcres ?? process.env.FARM_ACRES ?? 6),
+  Number(process.env.FARM_ZONE_SIZE_ACRES ?? 0.25),
+)
 
 export let irrigationSettings: IrrigationSettings = globalMemory.irrigationSettings || readIrrigationSettings()
 if (!globalMemory.irrigationSettings) globalMemory.irrigationSettings = irrigationSettings
@@ -614,6 +644,221 @@ export function enqueueCommand(zoneId: string, command: "spray" | "water" | "sto
   }
 }
 
+/**
+ * Move a queued command into the controller's active state. A command leaves
+ * `pendingCommands` only when the controller polls it, not merely because the
+ * dashboard asked for it.
+ */
+export function markCommandDispatched(zoneId: string, command: "spray" | "water" | "stop") {
+  const now = new Date().toISOString()
+  const idx = zones.findIndex(zone => zone.id === zoneId)
+
+  if (idx >= 0) {
+    const zone = deriveZoneRuntime(zones[idx])
+    if (command === "water") {
+      zones[idx] = deriveZoneRuntime({
+        ...zone,
+        lastIrrigated: now,
+        pumpStatus: "on",
+        cycle: {
+          ...(zone.cycle || createDefaultCycleRuntime()),
+          active: true,
+          state: "running",
+          pumpOn: true,
+          phaseStartedAt: Date.now(),
+          lastReason: "water_pulse_dispatched",
+        },
+      })
+    } else if (command === "stop") {
+      zones[idx] = deriveZoneRuntime({
+        ...zone,
+        pumpStatus: "off",
+        cycle: {
+          ...(zone.cycle || createDefaultCycleRuntime()),
+          active: false,
+          state: "done",
+          pumpOn: false,
+          phaseStartedAt: Date.now(),
+          lastReason: "stop_dispatched",
+        },
+      })
+    } else {
+      zones[idx] = deriveZoneRuntime({ ...zone, lastSprayed: now })
+    }
+  }
+
+  updateHardwareState({
+    currentAction: command === "water" ? "hydrate" : command === "spray" ? "spray" : "idle",
+    activeZoneId: command === "stop" ? null : zoneId,
+    currentPath: command === "stop" ? [] : [zoneId],
+    nozzleStatus: command === "stop" ? "closed" : "pending",
+    lastCommand: `${command}:${zoneId}`,
+    lastCommandAt: now,
+    awaitingFeedback: command !== "stop",
+  })
+}
+
+/** Record controller feedback and finish a pulse only after the pump closes. */
+export function recordControllerFeedback(
+  zoneId: string,
+  nozzleStatus: HardwareNozzleStatus,
+  feedbackMessage?: string | null,
+  currentPath?: string[],
+) {
+  const now = new Date().toISOString()
+  const terminal = nozzleStatus === "closed" || nozzleStatus === "idle" || nozzleStatus === "clogged"
+  const queue = pendingCommands[zoneId] || []
+  const idx = zones.findIndex(zone => zone.id === zoneId)
+
+  if (idx >= 0 && terminal) {
+    const zone = deriveZoneRuntime(zones[idx])
+    const moreWaterPulses = queue.includes("water")
+    zones[idx] = deriveZoneRuntime({
+      ...zone,
+      pumpStatus: "off",
+      cycle: {
+        ...(zone.cycle || createDefaultCycleRuntime()),
+        active: moreWaterPulses && nozzleStatus !== "clogged",
+        state: nozzleStatus === "clogged" ? "error" : moreWaterPulses ? "cooldown" : "done",
+        pumpOn: false,
+        phaseStartedAt: Date.now(),
+        lastReason: nozzleStatus === "clogged" ? "controller_reported_clog" : moreWaterPulses ? "pulse_complete_next_queued" : "pulse_plan_complete",
+      },
+    })
+  }
+
+  // Chemical records are finalized only after the controller reports that the
+  // spray pulse closed. A queued command is deliberately not counted as an
+  // application, and a water-only validation is deliberately not counted as a
+  // chemical spray.
+  if (nozzleStatus === "closed" && hardwareState.currentAction === "spray" && hardwareState.lastCommand === `spray:${zoneId}`) {
+    const db = readDB()
+    const queuedSprays = db.sprays
+      .filter((spray: any) => spray.zoneId === zoneId && spray.applicationStatus === "queued")
+      .sort((a: any, b: any) => Date.parse(String(a.queuedAt || a.timestamp)) - Date.parse(String(b.queuedAt || b.timestamp)))
+    const spray = queuedSprays[queuedSprays.length - 1]
+
+    if (spray) {
+      spray.applicationStatus = "completed"
+      spray.completedAt = now
+
+      if (spray.applicationMode === "farmer-confirmed-mix") {
+        const detection = spray.detectionId
+          ? db.detections.find((item: any) => item.id === spray.detectionId)
+          : null
+        if (detection && detection.status === "active") {
+          detection.status = "treated"
+          detection.treatedAt = now
+          detection.linkedSprayId = spray.id
+        }
+
+        const historyEntry = zoneHistory.find((entry) => entry.zoneId === zoneId)
+        if (historyEntry) historyEntry.sprays += 1
+
+        if (idx >= 0) {
+          const zone = deriveZoneRuntime(zones[idx])
+          const remainingActive = db.detections.filter((item: any) => item.zoneId === zoneId && item.status === "active")
+          const nextStatus: ZoneStatus = remainingActive.length > 0
+            ? remainingActive.some((item: any) => item.severityLevel === "high")
+              ? "critical"
+              : "warning"
+            : "warning"
+          zones[idx] = deriveZoneRuntime({
+            ...zone,
+            status: nextStatus,
+            disease: remainingActive[0]?.disease || zone.disease,
+            lastSprayed: now,
+          })
+        }
+      }
+
+      writeDB(db)
+      if (spray.applicationMode === "farmer-confirmed-mix") {
+        recordActivity({ type: "spray", zoneId, timestamp: now })
+      }
+    }
+  }
+
+  if (nozzleStatus === "closed" && hardwareState.currentAction === "hydrate" && hardwareState.lastCommand === `water:${zoneId}`) {
+    recordActivity({ type: "water", zoneId, timestamp: now })
+  }
+
+  const moreQueuedCommands = queue.length > 0 && nozzleStatus !== "clogged"
+  updateHardwareState({
+    nozzleStatus,
+    awaitingFeedback: nozzleStatus === "pending" || nozzleStatus === "open",
+    lastFeedback: feedbackMessage || (nozzleStatus === "open" ? "Pump opened" : nozzleStatus === "closed" ? "Pump pulse completed" : nozzleStatus === "clogged" ? "Controller reported a nozzle issue" : "Controller idle"),
+    lastFeedbackAt: now,
+    currentPath: currentPath || (zoneId ? [zoneId] : []),
+    currentAction: terminal && !moreQueuedCommands ? "idle" : hardwareState.currentAction,
+    activeZoneId: terminal && !moreQueuedCommands ? null : zoneId || hardwareState.activeZoneId,
+  })
+}
+
+/**
+ * Queue discrete irrigation pulses for the physical A1–A4 demo area.
+ * The board performs one three-second water pulse for each `water` command.
+ */
+export function queueIrrigationPulses(
+  zoneId: string,
+  requestedPulses: number,
+  weatherGate?: { allowsStart: boolean; action: string; reason: string },
+) {
+  const idx = zones.findIndex(zone => zone.id === zoneId)
+  if (idx < 0) return { queued: false, reason: "zone_not_found", pulses: 0 }
+  if (!isDemoControlZone(zoneId)) {
+    return {
+      queued: false,
+      reason: "outside_demo_control_area",
+      pulses: 0,
+      message: `The live irrigation pump is demonstrated on ${DEMO_CONTROL_ZONE_IDS.join(", ")}.`,
+    }
+  }
+
+  const zone = deriveZoneRuntime(zones[idx])
+  if (irrigationSettings.ripeningMode) return { queued: false, reason: "ripening_mode", pulses: 0 }
+  if (zone.sensor?.hasError) return { queued: false, reason: "sensor_error", pulses: 0 }
+  if ((zone.gridColor || "green") === "green") return { queued: false, reason: "grid_green", pulses: 0 }
+  if (weatherGate && !weatherGate.allowsStart) {
+    return { queued: false, reason: weatherGate.action, message: weatherGate.reason, pulses: 0 }
+  }
+
+  // `pulses` is only an ESTIMATE of how many short pulses the closed loop will
+  // likely need. We queue exactly ONE "water" command — the controller then
+  // runs its own loop (pulse → check soil → repeat) and stops when the zone
+  // reaches target. The hardware owns the loop; the app never stacks pulses.
+  const pulses = Math.max(1, Math.round(Number(requestedPulses) || 1))
+  if (!pendingCommands[zoneId]) pendingCommands[zoneId] = []
+  pendingCommands[zoneId].push("water")
+
+  zones[idx] = deriveZoneRuntime({
+    ...zone,
+    cycle: {
+      ...(zone.cycle || createDefaultCycleRuntime()),
+      active: true,
+      state: "running",
+      cycleStartedAt: Date.now(),
+      phaseStartedAt: Date.now(),
+      totalElapsedMs: 0,
+      pumpOn: false,
+      targetByGlobalHydrate: false,
+      lastReason: "irrigate_to_target_loop",
+    },
+  })
+
+  updateHardwareState({
+    currentAction: "hydrate",
+    activeZoneId: zoneId,
+    currentPath: [zoneId],
+    nozzleStatus: "pending",
+    lastCommand: `hydrate:${zoneId}:loop-to-target`,
+    lastCommandAt: new Date().toISOString(),
+    awaitingFeedback: true,
+  })
+
+  return { queued: true, pulses, reason: "ok", pulseMs: IRRIGATION_PULSE_MS }
+}
+
 export function stopIrrigationCycle(zoneId: string, reason: string) {
   const idx = zones.findIndex(z => z.id === zoneId)
   if (idx < 0) return
@@ -646,6 +891,9 @@ export function startIrrigationCycle(
 ) {
   const idx = zones.findIndex(z => z.id === zoneId)
   if (idx < 0) return { started: false, reason: "zone_not_found" }
+  if (!isDemoControlZone(zoneId)) {
+    return { started: false, reason: "outside_demo_control_area" }
+  }
 
   const zone = deriveZoneRuntime(zones[idx])
   if (irrigationSettings.ripeningMode) return { started: false, reason: "ripening_mode" }
@@ -847,7 +1095,12 @@ export function getHydrationCandidates() {
   zones = hydrated
   globalMemory.zones = zones
 
-  const targeted = hydrated.filter(zone => zone.hydrateEligible && (zone.gridColor === "red" || zone.gridColor === "yellow"))
+  const targeted = hydrated.filter(
+    zone =>
+      isDemoControlZone(zone.id) &&
+      zone.hydrateEligible &&
+      (zone.gridColor === "red" || zone.gridColor === "yellow"),
+  )
   const ignored = hydrated.filter(zone => zone.gridColor === "green").map(zone => zone.id)
 
   return {
@@ -907,4 +1160,57 @@ export function updateFarmProfile(acres: number, zoneSizeAcres = 0.25) {
   }
 
   return farmProfile
+}
+
+/**
+ * Clears all disease-detection data (scans, linked chemical spray records,
+ * disease-driven activity history) for demo/testing resets. Soil moisture,
+ * irrigation state, water-only pump validation records, and the farm layout
+ * are untouched — this only undoes what scanning produced.
+ */
+export function resetDetectionData() {
+  const db = readDB()
+  db.detections = []
+  db.sprays = db.sprays.filter((spray: any) => spray.applicationMode === "water-validation")
+  db.activityLog = db.activityLog.filter((entry: any) => entry.type === "water")
+  writeDB(db)
+
+  activityLog.length = 0
+  activityLog.push(...db.activityLog)
+  globalMemory.activityLog = activityLog
+
+  zones = zones.map(zone => {
+    const moistureStatus: ZoneStatus =
+      zone.soilMoisture < 25 ? "critical" : zone.soilMoisture < 40 ? "warning" : "healthy"
+
+    return deriveZoneRuntime({
+      ...zone,
+      status: moistureStatus,
+      disease: undefined,
+      canonicalDisease: undefined,
+      mlConfidence: undefined,
+      severityScore: undefined,
+      severityLevel: undefined,
+      lastAnalyzed: undefined,
+      activeDetection: undefined,
+      cropReview: undefined,
+      mlModelId: undefined,
+      mlModelVersion: undefined,
+      treatmentHistory: [],
+    })
+  })
+  globalMemory.zones = zones
+
+  zoneHistory = zoneHistory.map(entry => ({
+    ...entry,
+    sprays: 0,
+    diseaseHistory: [],
+    confidenceHistory: [],
+    severityHistory: [],
+    timestampHistory: [],
+    treatmentHistory: [],
+  }))
+  globalMemory.zoneHistory = zoneHistory
+
+  return { resetAt: new Date().toISOString(), zoneCount: zones.length }
 }

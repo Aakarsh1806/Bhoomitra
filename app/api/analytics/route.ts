@@ -1,354 +1,216 @@
 import fs from "fs"
 import path from "path"
 import { NextResponse } from "next/server"
+import { zones } from "@/app/api/zones/data"
 import { readDB } from "@/app/lib/database"
 
 const farmerProfilePath = path.join(process.cwd(), "app/data/farmer_profile.json")
 
-function normalizeSeverityLevel(level?: string): "low" | "moderate" | "high" {
-  if (level === "high") return "high"
-  if (level === "medium" || level === "moderate") return "moderate"
-  return "low"
-}
-
-function normalizeDetectionStatus(status?: string): "active" | "treated" | "resolved" {
-  if (status === "treated") return "treated"
-  if (status === "resolved") return "resolved"
-  return "active"
-}
-
-function isHealthyDiseaseName(disease?: string) {
-  return String(disease || "").toLowerCase().includes("healthy")
-}
-
-function effectiveSeverityLevel(detection: any): "low" | "moderate" | "high" {
-  const diseaseName = detection?.diseaseName || detection?.disease
-  if (isHealthyDiseaseName(diseaseName)) return "low"
-  return normalizeSeverityLevel(detection?.severityLevel)
-}
+type Severity = "low" | "moderate" | "high"
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value))
 }
 
-function getSeverityWeight(level: "low" | "moderate" | "high") {
-  if (level === "high") return 1
-  if (level === "moderate") return 0.6
-  return 0.25
+function normalizeSeverity(level?: string): Severity {
+  if (level === "high") return "high"
+  if (level === "moderate" || level === "medium") return "moderate"
+  return "low"
 }
 
-function getConfidenceWeight(confidence: any) {
-  const parsed = Number(confidence)
-  if (!Number.isFinite(parsed)) return 0.7
-  return clamp(parsed, 0.2, 1)
+function isHealthy(disease?: string) {
+  return String(disease || "").toLowerCase().includes("healthy")
 }
 
-function getFreshnessWeight(timestamp?: string) {
-  const ms = Date.parse(String(timestamp || ""))
-  if (Number.isNaN(ms)) return 0.5
-
-  const ageHours = Math.max(0, (Date.now() - ms) / (1000 * 60 * 60))
-  return clamp(Math.exp(-ageHours / 48), 0.1, 1)
+function cropFromDetection(detection: any) {
+  if (detection?.scanCrop) return String(detection.scanCrop)
+  if (detection?.modelCrop) return String(detection.modelCrop)
+  return String(detection?.diseaseName || detection?.disease || "").split("___")[0]?.replace(/_/g, " ").trim() || "Unspecified crop"
 }
 
-function readFarmZoneCount() {
+function readFarmCrop() {
   try {
-    if (!fs.existsSync(farmerProfilePath)) return 1
-    const raw = fs.readFileSync(farmerProfilePath, "utf-8")
-    const profile = JSON.parse(raw)
-    const count = Number(profile?.zoneCount ?? profile?.zones ?? 1)
-    return Math.max(1, Number.isFinite(count) ? count : 1)
+    if (!fs.existsSync(farmerProfilePath)) return "Unspecified crop"
+    const profile = JSON.parse(fs.readFileSync(farmerProfilePath, "utf-8"))
+    return String(profile?.primaryCrop || "Unspecified crop")
   } catch {
-    return 1
+    return "Unspecified crop"
   }
+}
+
+function freshnessWeight(timestamp?: string) {
+  const parsed = Date.parse(String(timestamp || ""))
+  if (Number.isNaN(parsed)) return 0.6
+  const ageDays = Math.max(0, (Date.now() - parsed) / 86_400_000)
+  return clamp(Math.exp(-ageDays / 14), 0.35, 1)
+}
+
+function detectionRisk(detection: any) {
+  const severity = normalizeSeverity(detection?.severityLevel)
+  const base = severity === "high" ? 0.62 : severity === "moderate" ? 0.38 : 0.18
+  const confidence = clamp(Number(detection?.confidence) || 0.5, 0.2, 1)
+  const decayed = base * (0.45 + confidence * 0.55) * freshnessWeight(detection?.timestamp)
+  // An active high-severity detection must never be diluted below the
+  // dashboard's "critical" red threshold (currentRiskPercent >= 50) just
+  // because confidence or freshness are low — the field-health headline and
+  // the zone's "critical" status badge must always agree with each other.
+  const floor = severity === "high" ? 0.55 : 0
+  return clamp(Math.max(decayed, floor), 0, 0.9)
+}
+
+function combinedRisk(detections: any[]) {
+  const probabilityNone = detections.reduce((product, detection) => product * (1 - detectionRisk(detection)), 1)
+  return Number((clamp((1 - probabilityNone) * 100, 0, 100)).toFixed(1))
+}
+
+function numeric(value: unknown) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null
 }
 
 export async function GET() {
   const db = readDB()
+  const detections: any[] = db.detections || []
+  const allSprays: any[] = db.sprays || []
+  const farmCrop = readFarmCrop()
 
-  const detections = db.detections || []
-  const sprays = db.sprays || []
-
-  const totalDetections = detections.length
-  const totalSprays = sprays.length
-
-  /* ============================================================
-     SEVERITY MODEL (6 / 3 / 1)
-     Weighted risk reflects CURRENT state — only active (untreated,
-     unresolved) detections — so it stays consistent with the live
-     Farm Map risk score instead of counting the full scan history.
-  ============================================================ */
-
-  const activeSeverityDetections = detections.filter(
-    (d: any) => normalizeDetectionStatus(d.status) === "active" && !isHealthyDiseaseName(d.diseaseName || d.disease)
+  const activeDetections = detections.filter(
+    (detection) => detection.status === "active" && !isHealthy(detection.diseaseName || detection.disease) && detection.cropMatch !== "review",
   )
-
-  let high = 0
-  let moderate = 0
-  let low = 0
-
-  activeSeverityDetections.forEach((d: any) => {
-    const level = effectiveSeverityLevel(d)
-    if (level === "high") high++
-    else if (level === "moderate") moderate++
-    else low++
-  })
-
-  const severityPenalty =
-    high * 6 +
-    moderate * 3 +
-    low * 1
-
-  const maxPossiblePenalty =
-    activeSeverityDetections.length * 6 || 1
-
-  const weightedRiskPercent =
-    (severityPenalty / maxPossiblePenalty) * 100
-
-    const diseaseFrequency: Record<string, number> ={}
-
-  /* ============================================================
-     ZONE GROUPING
-  ============================================================ */
-
-  const zoneMap: Record<string, any> = {}
-
-  detections.forEach((d: any) => {
-    if (!zoneMap[d.zoneId]) {
-      zoneMap[d.zoneId] = {
-        detections: [],
-        sprays: [],
-      }
-    }
-    zoneMap[d.zoneId].detections.push(d)
-  })
-
-  detections.forEach((d: any) => {
-    const diseaseName = d.diseaseName || d.disease || "Unknown"
-
-    diseaseFrequency[diseaseName] =
-      (diseaseFrequency[diseaseName] || 0) + 1
-  })
-
-  sprays.forEach((s: any) => {
-    if (!zoneMap[s.zoneId]) {
-      zoneMap[s.zoneId] = {
-        detections: [],
-        sprays: [],
-      }
-    }
-    zoneMap[s.zoneId].sprays.push(s)
-  })
-
-  /* ============================================================
-     ZONE INTELLIGENCE MODEL
-  ============================================================ */
-
-  const zoneAnalytics: any[] = []
-
-  Object.keys(zoneMap).forEach((zoneId) => {
-    const zone = zoneMap[zoneId]
-    const zoneDetections = zone.detections
-    const zoneSprays = zone.sprays
-
-    let zoneHigh = 0
-    let zoneModerate = 0
-
-    zoneDetections.forEach((d: any) => {
-      const level = effectiveSeverityLevel(d)
-      if (level === "high") zoneHigh++
-      if (level === "moderate") zoneModerate++
-    })
-
-    /* ===== Required Spray Logic ===== */
-
-    const requiredSprays =
-      zoneHigh * 1 +
-      zoneModerate * 0.7
-
-    const actualSprays = zoneSprays.length
-
-    const overSpray =
-      Math.max(0, actualSprays - requiredSprays)
-
-    /* ===== Volume Penalty (Logarithmic) ===== */
-
-    const volumePenalty =
-      Math.log(actualSprays + 1) * 30
-
-    /* ============================================================
-       TRUE RESPONSE DELAY (HOUR BASED)
-    ============================================================ */
-
-    let totalDelayPenalty = 0
-    let pairedCount = 0
-
-    zoneDetections.forEach((d: any) => {
-      const detectionTime = new Date(d.timestamp).getTime()
-
-      const validSprays = zoneSprays
-        .filter((s: any) =>
-          new Date(s.timestamp).getTime() >= detectionTime
-        )
-        .sort(
-          (a: any, b: any) =>
-            new Date(a.timestamp).getTime() -
-            new Date(b.timestamp).getTime()
-        )
-
-      if (validSprays.length === 0) {
-        totalDelayPenalty += 15
-        return
-      }
-
-      const firstSprayTime =
-        new Date(validSprays[0].timestamp).getTime()
-
-      const delayHours =
-        (firstSprayTime - detectionTime) /
-        (1000 * 60 * 60)
-
-      let penalty = 0
-
-      if (delayHours <= 6) penalty = 0
-      else if (delayHours <= 24) penalty = 4
-      else if (delayHours <= 48) penalty = 8
-      else if (delayHours <= 72) penalty = 12
-      else penalty = 15
-
-      totalDelayPenalty += penalty
-      pairedCount++
-    })
-
-    const avgDelayPenalty =
-      pairedCount === 0
-        ? 0
-        : totalDelayPenalty / pairedCount
-
-    /* ===== Over-Spray Penalty ===== */
-
-    const overPenalty =
-      overSpray * 8
-
-    /* ============================================================
-       FINAL ZONE EFFICIENCY
-    ============================================================ */
-
-    let zoneEfficiency =
-      100
-      - volumePenalty
-      - overPenalty
-      - avgDelayPenalty
-
-    zoneEfficiency =
-      Math.max(0, zoneEfficiency)
-
-    zoneAnalytics.push({
-      zoneId,
-      requiredSprays,
-      actualSprays,
-      overSpray,
-      volumePenalty,
-      overPenalty,
-      avgDelayPenalty,
-      zoneEfficiency,
-    })
-  })
-
-  /* ============================================================
-     GLOBAL SPRAY EFFICIENCY
-  ============================================================ */
-
-  const globalSprayEfficiency =
-    zoneAnalytics.length === 0
-      ? 100
-      : zoneAnalytics.reduce(
-          (sum, z) => sum + z.zoneEfficiency,
-          0
-        ) / zoneAnalytics.length
-
-  /* ============================================================
-     WATER MODELING
-     Manual baseline = blanket-spray every disease detection ever
-     recorded (non-healthy); AI = actual sprays performed. This is a
-     cumulative comparison, so it uses full history, not the active
-     subset used for the current-risk score above.
-  ============================================================ */
-
-  const nonHealthyDetections = detections.filter(
-    (d: any) => !isHealthyDiseaseName(d.diseaseName || d.disease)
-  ).length
-
-  const manualWater =
-    nonHealthyDetections * 15
-
-  const aiWater =
-    totalSprays * 15
-
-  const waterSaved =
-    manualWater - aiWater
-
-  const overuse = Math.max(0, aiWater - manualWater)
-
-  const waterReductionPercent =
-    manualWater === 0
-      ? 0
-      : (waterSaved / manualWater) * 100
-
-  const farmZoneCount = readFarmZoneCount()
-  const activeDetectionsList = detections.filter((d: any) => normalizeDetectionStatus(d.status) === "active")
-  const activeZoneCount = new Set(activeDetectionsList.map((d: any) => d.zoneId).filter(Boolean)).size
-
-  const activeRiskScore = activeDetectionsList.reduce((sum: number, d: any) => {
-    const diseaseName = d?.diseaseName || d?.disease
-    if (isHealthyDiseaseName(diseaseName)) return sum
-
-    const level = effectiveSeverityLevel(d)
-    const severityWeight = getSeverityWeight(level)
-    const confidenceWeight = getConfidenceWeight(d?.confidence)
-    const freshnessWeight = getFreshnessWeight(d?.timestamp)
-
-    return sum + severityWeight * confidenceWeight * freshnessWeight
-  }, 0)
-
-  const currentRiskPercent = clamp(
-    (activeRiskScore / Math.max(1, farmZoneCount)) * 100,
-    0,
-    100
+  const completedChemicalSprays = allSprays.filter(
+    (spray) => spray.applicationMode !== "water-validation" && spray.applicationStatus !== "queued",
   )
+  // Water-pump validation tests are counted separately (below), so they must not
+  // inflate "awaiting controller feedback" — otherwise Analytics claims a pending
+  // command while Smart Spray's live queue shows the pump idle.
+  const queuedApplications = allSprays.filter(
+    (spray) => spray.applicationStatus === "queued" && spray.applicationMode !== "water-validation",
+  )
+  const waterValidationTests = allSprays.filter((spray) => spray.applicationMode === "water-validation")
 
-  /* ============================================================
-     RETURN OBJECT
-  ============================================================ */
+  const currentRiskPercent = combinedRisk(activeDetections)
+  const high = activeDetections.filter((detection) => normalizeSeverity(detection.severityLevel) === "high").length
+  const moderate = activeDetections.filter((detection) => normalizeSeverity(detection.severityLevel) === "moderate").length
+  const low = activeDetections.filter((detection) => normalizeSeverity(detection.severityLevel) === "low").length
+  const activeZoneCount = new Set(activeDetections.map((detection) => detection.zoneId).filter(Boolean)).size
+
+  const zoneAnalytics = zones
+    .slice()
+    .sort((a, b) => a.row - b.row || a.col - b.col)
+    .map((zone) => {
+      const zoneActive = activeDetections.filter((detection) => detection.zoneId === zone.id)
+      const zoneHistory = detections
+        .filter((detection) => detection.zoneId === zone.id)
+        .slice()
+        .sort((a, b) => Date.parse(String(b.timestamp || "")) - Date.parse(String(a.timestamp || "")))
+      const zoneSprays = completedChemicalSprays.filter((spray) => spray.zoneId === zone.id)
+      const zoneQueued = queuedApplications.filter((spray) => spray.zoneId === zone.id)
+      return {
+        zoneId: zone.id,
+        soilMoisture: zone.soilMoisture,
+        activeDetections: zoneActive.length,
+        historicalScans: zoneHistory.length,
+        completedApplications: zoneSprays.length,
+        queuedApplications: zoneQueued.length,
+        currentRiskPercent: combinedRisk(zoneActive),
+        status: zoneActive.some((detection) => normalizeSeverity(detection.severityLevel) === "high")
+          ? "critical"
+          : zoneActive.length > 0
+            ? "monitor"
+            : "stable",
+        // A cross-crop/unconfirmed ("review") record must stay audit-only and
+        // never surface as the zone's farm conclusion.
+        latestDisease: zoneActive[0]?.disease || zoneHistory.find((detection) => detection.cropMatch !== "review")?.disease || null,
+      }
+    })
+
+  const diseaseGroups = new Map<string, { name: string; records: number; active: number; highestSeverity: Severity; crops: Set<string> }>()
+  detections
+    .filter((detection) => !isHealthy(detection.diseaseName || detection.disease))
+    .forEach((detection) => {
+      const name = String(detection.diseaseName || detection.disease || "Unspecified diagnosis")
+      const current = diseaseGroups.get(name) || { name, records: 0, active: 0, highestSeverity: "low" as Severity, crops: new Set<string>() }
+      current.records += 1
+      if (detection.status === "active" && detection.cropMatch !== "review") current.active += 1
+      const severity = normalizeSeverity(detection.severityLevel)
+      if ((severity === "high") || (severity === "moderate" && current.highestSeverity === "low")) current.highestSeverity = severity
+      current.crops.add(cropFromDetection(detection))
+      diseaseGroups.set(name, current)
+    })
+
+  const loggedCosts = completedChemicalSprays
+    .map((spray) => numeric(spray.inputCostInr ?? spray.estimatedInputCostInr))
+    .filter((cost): cost is number => cost !== null)
+  const responseHours = completedChemicalSprays
+    .map((spray) => {
+      const detection = spray.detectionId ? detections.find((item) => item.id === spray.detectionId) : null
+      const start = Date.parse(String(detection?.timestamp || ""))
+      const end = Date.parse(String(spray.completedAt || spray.timestamp || ""))
+      return !Number.isNaN(start) && !Number.isNaN(end) && end >= start ? (end - start) / 3_600_000 : null
+    })
+    .filter((hours): hours is number => hours !== null)
+  const crossCropRecords = detections.filter((detection) => {
+    const crop = cropFromDetection(detection)
+    return detection.cropMatch === "review" || (farmCrop !== "Unspecified crop" && crop !== "Unspecified crop" && crop.toLowerCase() !== farmCrop.toLowerCase())
+  })
+  const activePhiHolds = completedChemicalSprays
+    .map((spray) => {
+      const days = Number(spray.preHarvestIntervalDays)
+      const completedAt = Date.parse(String(spray.completedAt || spray.timestamp || ""))
+      if (!Number.isFinite(days) || days < 0 || Number.isNaN(completedAt)) return null
+      const releaseAt = completedAt + days * 86_400_000
+      return releaseAt > Date.now() ? { zoneId: spray.zoneId, releaseAt } : null
+    })
+    .filter((hold): hold is { zoneId: string; releaseAt: number } => hold !== null)
 
   return NextResponse.json({
-    totalDetections,
-    totalSprays,
+    totalDetections: detections.length,
+    totalSprays: completedChemicalSprays.length,
+    queuedApplications: queuedApplications.length,
     currentRiskPercent,
-    activeDetections: activeDetectionsList.length,
+    activeDetections: activeDetections.length,
     activeZoneCount,
-    farmZoneCount,
-
-    severityBreakdown: {
-      high,
-      moderate,
-      medium: moderate,
-      low,
-      severityPenalty,
-      weightedRiskPercent,
-    },
-
-    diseaseFrequency,
-
+    farmZoneCount: zones.length,
+    severityBreakdown: { high, moderate, medium: moderate, low },
     zoneAnalytics,
-    globalSprayEfficiency,
-
+    diseaseAnalytics: [...diseaseGroups.values()]
+      .map((group) => ({ ...group, crops: [...group.crops] }))
+      .sort((a, b) => b.active - a.active || b.records - a.records || a.name.localeCompare(b.name)),
     waterModel: {
-      manualWater,
-      aiWater,
-      waterSaved,
-      overuse,
-      waterReductionPercent,
+      completedChemicalApplications: completedChemicalSprays.length,
+      waterValidationTests: waterValidationTests.length,
+      calibrationRequired: true,
+      message: "Volume is intentionally not estimated until the pump's mL-per-three-second calibration is recorded.",
+    },
+    financial: {
+      currency: "INR",
+      totalInputCostInr: loggedCosts.length ? Number(loggedCosts.reduce((sum, cost) => sum + cost, 0).toFixed(2)) : null,
+      applicationsWithCost: loggedCosts.length,
+      completedApplications: completedChemicalSprays.length,
+      message: loggedCosts.length
+        ? "Input-cost total is based only on farmer-entered product costs."
+        : "Log a product cost with a confirmed tank plan to begin input-cost tracking.",
+    },
+    responseTiming: {
+      completedLinkedApplications: responseHours.length,
+      averageHours: responseHours.length ? Number((responseHours.reduce((sum, hours) => sum + hours, 0) / responseHours.length).toFixed(1)) : null,
+      message: responseHours.length
+        ? "Measured from scan time to controller-confirmed application completion."
+        : "Response timing appears after a linked application receives controller-closed feedback.",
+    },
+    preHarvest: {
+      activeHolds: activePhiHolds.length,
+      nextReleaseAt: activePhiHolds.length ? new Date(Math.min(...activePhiHolds.map((hold) => hold.releaseAt))).toISOString() : null,
+      message: activePhiHolds.length
+        ? "At least one completed application is still inside its logged pre-harvest interval."
+        : "No logged pre-harvest interval is currently holding a completed zone.",
+    },
+    cropContext: {
+      farmCrop,
+      crossCropRecords: crossCropRecords.length,
+      message: crossCropRecords.length
+        ? "Cross-crop or unconfirmed records are separated for review; they do not create automatic spray instructions."
+        : "All recorded scans align with the selected crop context.",
     },
   })
 }

@@ -141,7 +141,7 @@ export default function HomePage() {
       icon: BarChart3,
       title: "Farm Health Analytics",
       description:
-        "Track Stability Index, Disease Pressure, and Ecosystem Balance across every monitored zone.",
+        "Track field health, weather-driven disease pressure, water saved, and projected yield protected — every number real or a labelled projection.",
       href: "/dashboard/analytics",
       accent: "bg-green-100",
     },

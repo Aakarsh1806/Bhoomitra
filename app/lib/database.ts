@@ -6,12 +6,16 @@ const archiveDir = path.join(process.cwd(), "app/data/archive")
 const MAX_DETECTIONS = 5000
 const MAX_SPRAYS = 5000
 const MAX_ACTIVITY = 5000
+const MAX_WATERLOG = 5000
 
 type DBShape = {
   detections: any[]
   sprays: any[]
   zoneHistory: any[]
   activityLog: any[]
+  // Unified, farmId-stamped volume ledger — the single source of truth for
+  // every litre the pump moves (spray + irrigation). Analytics reads from here.
+  waterLog: any[]
 }
 
 function ensureArchiveDir() {
@@ -26,10 +30,11 @@ function normalizeDB(data: any): DBShape {
     sprays: Array.isArray(data?.sprays) ? data.sprays : [],
     zoneHistory: Array.isArray(data?.zoneHistory) ? data.zoneHistory : [],
     activityLog: Array.isArray(data?.activityLog) ? data.activityLog : [],
+    waterLog: Array.isArray(data?.waterLog) ? data.waterLog : [],
   }
 }
 
-function archiveOverflow(key: "detections" | "sprays" | "activityLog", items: any[]) {
+function archiveOverflow(key: "detections" | "sprays" | "activityLog" | "waterLog", items: any[]) {
   if (items.length === 0) return
   ensureArchiveDir()
   const ts = new Date().toISOString().replace(/[:.]/g, "-")
@@ -52,6 +57,11 @@ function applyRetention(db: DBShape) {
     const overflow = db.activityLog.splice(0, db.activityLog.length - MAX_ACTIVITY)
     archiveOverflow("activityLog", overflow)
   }
+
+  if (db.waterLog.length > MAX_WATERLOG) {
+    const overflow = db.waterLog.splice(0, db.waterLog.length - MAX_WATERLOG)
+    archiveOverflow("waterLog", overflow)
+  }
 }
 
 export function readDB() {
@@ -64,6 +74,7 @@ export function readDB() {
       sprays: [],
       zoneHistory: [],
       activityLog: [],
+      waterLog: [],
     }
     fs.writeFileSync(dbPath, JSON.stringify(initialData, null, 2))
     return initialData
