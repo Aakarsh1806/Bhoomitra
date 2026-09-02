@@ -698,6 +698,27 @@ export function markCommandDispatched(zoneId: string, command: "spray" | "water"
   })
 }
 
+/**
+ * Hand out the next queued command across the whole A1–A4 demo rig, not just
+ * whichever zone happens to have a live sensor. The prototype has exactly one
+ * physical soil probe (on A1), so /api/sensor's own dispatch-on-report never
+ * fires for A2–A4 — their queued "water" commands would sit forever. The
+ * bridge polls this endpoint on its own timer (independent of sensor pushes)
+ * and paces requests so the single shared pump/servo only ever runs one
+ * zone's pulse at a time, in a fixed A1→A4 order.
+ */
+export function dispatchNextPendingCommand() {
+  for (const zoneId of DEMO_CONTROL_ZONE_IDS) {
+    const queue = pendingCommands[zoneId]
+    if (queue && queue.length > 0) {
+      const command = queue.shift() as "spray" | "water" | "stop"
+      markCommandDispatched(zoneId, command)
+      return { zoneId, command, remainingQueue: queue.length }
+    }
+  }
+  return { zoneId: null, command: null, remainingQueue: 0 }
+}
+
 /** Record controller feedback and finish a pulse only after the pump closes. */
 export function recordControllerFeedback(
   zoneId: string,
