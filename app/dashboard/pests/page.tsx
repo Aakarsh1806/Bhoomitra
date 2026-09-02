@@ -126,6 +126,8 @@ const confidenceBandStyle: Record<ConfidenceBand, { badge: string; bar: string; 
   low: { badge: "bg-red-100 text-red-800", bar: "bg-red-500", label: "Low" },
 }
 
+const MIN_CONFIDENCE_TO_SHOW = 0.65
+
 function formatConfidence(value: number) {
   return `${Math.round(value * 100)}%`
 }
@@ -442,7 +444,7 @@ export default function PestDetectionPage() {
               {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Microscope className="mr-2 h-5 w-5" />}
               Check this photo
             </Button>
-            <p className="text-center text-sm leading-5 text-slate-500">Only real model results are shown and saved to pest history.</p>
+            <p className="text-center text-sm leading-5 text-slate-500">Only real model results are shown. Scans above {formatConfidence(MIN_CONFIDENCE_TO_SHOW)} confidence are saved to pest history.</p>
           </CardContent>
         </Card>
 
@@ -500,51 +502,60 @@ export default function PestDetectionPage() {
                     <h2 className="mt-1 text-3xl font-black text-slate-950">{result.summary.primaryPestName}</h2>
                     <p className="mt-1 text-sm italic text-slate-500">{result.summary.scientificName}</p>
 
-                    <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                      <div className="flex items-center justify-between">
-                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Model confidence</p>
-                        <Badge className={`${confidenceBandStyle[result.summary.confidenceBand].badge} shadow-none`}>
-                          {confidenceBandStyle[result.summary.confidenceBand].label}
-                        </Badge>
-                      </div>
-                      <div className="mt-2 flex items-center gap-3">
-                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
-                          <div
-                            className={`h-full rounded-full transition-all ${confidenceBandStyle[result.summary.confidenceBand].bar}`}
-                            style={{ width: `${Math.max(0, Math.min(100, result.summary.confidence * 100))}%` }}
-                          />
+                    {result.summary.confidence > MIN_CONFIDENCE_TO_SHOW ? (
+                      <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Model confidence</p>
+                          <Badge className={`${confidenceBandStyle[result.summary.confidenceBand].badge} shadow-none`}>
+                            {confidenceBandStyle[result.summary.confidenceBand].label}
+                          </Badge>
                         </div>
-                        <span className="text-lg font-black text-slate-800">{formatConfidence(result.summary.confidence)}</span>
-                      </div>
-                      {result.summary.identityNeedsReview && (
-                        <p className="mt-2 text-xs font-semibold text-amber-700">Below 60% — retake the photo or get an expert check before acting.</p>
-                      )}
+                        <div className="mt-2 flex items-center gap-3">
+                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
+                            <div
+                              className={`h-full rounded-full transition-all ${confidenceBandStyle[result.summary.confidenceBand].bar}`}
+                              style={{ width: `${Math.max(0, Math.min(100, result.summary.confidence * 100))}%` }}
+                            />
+                          </div>
+                          <span className="text-lg font-black text-slate-800">{formatConfidence(result.summary.confidence)}</span>
+                        </div>
 
-                      {result.predictions.length > 1 && (
-                        <div className="mt-4 space-y-2 border-t border-slate-200 pt-3">
-                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Other possible matches</p>
-                          {result.predictions.slice(1).map((prediction) => (
-                            <div key={prediction.label} className="flex items-center justify-between gap-3 text-sm">
-                              <span className="font-semibold text-slate-600">{prediction.label}</span>
-                              <span className="font-bold text-slate-500">{formatConfidence(prediction.confidence)}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
+                        {result.predictions.length > 1 && (
+                          <div className="mt-4 space-y-2 border-t border-slate-200 pt-3">
+                            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Other possible matches</p>
+                            {result.predictions.slice(1).map((prediction) => (
+                              <div key={prediction.label} className="flex items-center justify-between gap-3 text-sm">
+                                <span className="font-semibold text-slate-600">{prediction.label}</span>
+                                <span className="font-bold text-slate-500">{formatConfidence(prediction.confidence)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+                        Confidence score not shown — below the reporting threshold. Retake the photo in better light or get an expert check before acting.
+                      </div>
+                    )}
 
                     <p className="mt-5 text-sm font-medium leading-6 text-slate-600">{result.classificationLimit}</p>
                     <Button variant="outline" className="mt-5 w-full rounded-xl" onClick={speakAdvice}>
                       <Volume2 className="mr-2 h-4 w-4" /> Listen to advice
                     </Button>
-                    <Button
-                      className="mt-3 h-12 w-full rounded-xl bg-green-700 text-base font-bold hover:bg-green-800"
-                      disabled={confirming || (result.persisted && history.some((record) => record.id === result.recordId && record.farmerConfirmed))}
-                      onClick={() => void confirmResult()}
-                    >
-                      {confirming ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
-                      Confirm and save observation
-                    </Button>
+                    {result.recordId ? (
+                      <Button
+                        className="mt-3 h-12 w-full rounded-xl bg-green-700 text-base font-bold hover:bg-green-800"
+                        disabled={confirming || (result.persisted && history.some((record) => record.id === result.recordId && record.farmerConfirmed))}
+                        onClick={() => void confirmResult()}
+                      >
+                        {confirming ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
+                        Confirm and save observation
+                      </Button>
+                    ) : (
+                      <p className="mt-3 rounded-xl bg-slate-100 p-3 text-center text-sm font-semibold text-slate-500">
+                        Not saved to pest history — confidence was below {formatConfidence(MIN_CONFIDENCE_TO_SHOW)}.
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -681,9 +692,11 @@ export default function PestDetectionPage() {
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Badge variant="outline">Zone {record.zoneId}</Badge>
                     <Badge variant="outline">{record.crop}</Badge>
-                    <Badge className={`${confidenceBandStyle[record.confidenceBand].badge} shadow-none`}>
-                      {formatConfidence(record.confidence)} confidence
-                    </Badge>
+                    {record.confidence > MIN_CONFIDENCE_TO_SHOW && (
+                      <Badge className={`${confidenceBandStyle[record.confidenceBand].badge} shadow-none`}>
+                        {formatConfidence(record.confidence)} confidence
+                      </Badge>
+                    )}
                   </div>
                   <div className="mt-4 rounded-xl bg-slate-50 p-3 text-center">
                     <p className="text-sm font-bold text-slate-800">{formatDate(record.timestamp)}</p>
