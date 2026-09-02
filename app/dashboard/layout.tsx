@@ -19,6 +19,8 @@ import {
     LogOut,
     UserCircle,
     Radar,
+    PanelLeftClose,
+    PanelLeftOpen,
 } from "lucide-react"
 
 type NavItem = {
@@ -27,6 +29,13 @@ type NavItem = {
     icon: any
     adminOnly?: boolean
 }
+
+type NavGroup = {
+    label: string
+    items: NavItem[]
+}
+
+const SIDEBAR_NAV_ID = "dashboard-sidebar-nav"
 
 export default function DashboardLayout({
     children,
@@ -39,9 +48,9 @@ export default function DashboardLayout({
     const { setIsLoading } = useNavigation()
     const [role, setRole] = useState<string | null>(null)
     const [checked, setChecked] = useState(false)
-    const [pinned, setPinned] = useState(false)
-    const [hovered, setHovered] = useState(false)
-    const expanded = pinned || hovered
+    // Explicit, click-driven expand/collapse — no hover-triggered state.
+    const [collapsed, setCollapsed] = useState(false)
+    const expanded = !collapsed
 
     // Resolve the live account (role + block status). If the account was
     // blocked/removed while the session was open, bounce back to login.
@@ -69,24 +78,49 @@ export default function DashboardLayout({
         }
     }, [router])
 
-    const allNavItems: NavItem[] = [
-        { name: t("nav.dashboard"), href: "/dashboard", icon: Home },
-        { name: t("nav.autospray"), href: "/dashboard/autospray", icon: SprayCan },
-        { name: t("nav.map"), href: "/dashboard/map", icon: Map },
-        { name: t("nav.detection"), href: "/dashboard/detection", icon: Microscope },
-        { name: t("nav.analytics"), href: "/dashboard/analytics", icon: BarChart3 },
-        { name: t("nav.recommendations"), href: "/dashboard/recommendations", icon: Brain },
-        { name: "Command Center", href: "/dashboard/spread-control", icon: Radar },
-        { name: "Activity", href: "/dashboard/history", icon: History },
-        { name: "User Management", href: "/dashboard/users", icon: Users, adminOnly: true },
-        { name: "About", href: "/dashboard/about", icon: Info },
-        { name: "My Account", href: "/dashboard/account", icon: UserCircle },
+    const navGroups: NavGroup[] = [
+        {
+            label: "Overview",
+            items: [
+                { name: t("nav.dashboard"), href: "/dashboard", icon: Home },
+            ],
+        },
+        {
+            label: "Field Operations",
+            items: [
+                { name: t("nav.detection"), href: "/dashboard/detection", icon: Microscope },
+                { name: t("nav.autospray"), href: "/dashboard/autospray", icon: SprayCan },
+                { name: t("nav.map"), href: "/dashboard/map", icon: Map },
+                { name: "Spread Control", href: "/dashboard/spread-control", icon: Radar },
+            ],
+        },
+        {
+            label: "Insights",
+            items: [
+                { name: t("nav.analytics"), href: "/dashboard/analytics", icon: BarChart3 },
+                { name: t("nav.recommendations"), href: "/dashboard/recommendations", icon: Brain },
+                { name: "Activity", href: "/dashboard/history", icon: History },
+            ],
+        },
+        {
+            label: "Account",
+            items: [
+                { name: "User Management", href: "/dashboard/users", icon: Users, adminOnly: true },
+                { name: "About", href: "/dashboard/about", icon: Info },
+                { name: "My Account", href: "/dashboard/account", icon: UserCircle },
+            ],
+        },
     ]
 
-    const navItems = allNavItems.filter((item) => !item.adminOnly || role === "admin")
+    const visibleGroups = navGroups
+        .map((group) => ({
+            ...group,
+            items: group.items.filter((item) => !item.adminOnly || role === "admin"),
+        }))
+        .filter((group) => group.items.length > 0)
 
     useEffect(() => {
-        allNavItems.forEach((item) => router.prefetch(item.href))
+        navGroups.forEach((group) => group.items.forEach((item) => router.prefetch(item.href)))
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [router, role])
 
@@ -106,47 +140,69 @@ export default function DashboardLayout({
 
             {/* ===== SIDEBAR ===== */}
             <aside
-                onMouseEnter={() => setHovered(true)}
-                onMouseLeave={() => setHovered(false)}
                 className={`fixed left-0 top-0 z-50 flex h-screen flex-col overflow-hidden border-r border-emerald-100/80 bg-white/95 shadow-[8px_0_40px_-24px_rgba(16,185,129,0.5)] backdrop-blur transition-[width] duration-300 ease-out ${expanded ? "w-72" : "w-20"}`}
             >
-                {/* Brand — the logo is an always-clickable menu toggle */}
-                <div className="flex h-20 shrink-0 items-center gap-3 px-5">
+                {/* Brand + explicit collapse control */}
+                <div className="flex h-20 shrink-0 items-center gap-2 px-5">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-strong text-sm font-black text-white shadow-[0_0_20px_-4px_rgba(16,185,129,0.6)]">
+                        BT
+                    </div>
+                    <span className={`flex-1 text-xl font-black tracking-tight text-[#14231a] transition-all duration-300 ${expanded ? "max-w-[140px] opacity-100" : "max-w-0 opacity-0"} overflow-hidden whitespace-nowrap`}>Bhoomitra</span>
+                </div>
+
+                {/* Single, always-mounted toggle button — keeps keyboard focus
+                    across the collapse/expand transition instead of the focus
+                    being dropped when the control's DOM position would
+                    otherwise change. */}
+                <div className={`flex shrink-0 px-3 pb-3 ${expanded ? "justify-end" : "justify-center"}`}>
                     <button
                         type="button"
-                        onClick={() => setPinned((value) => !value)}
-                        title={pinned ? "Collapse menu" : "Keep menu open"}
-                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-brand-strong text-sm font-black text-white shadow-[0_0_20px_-4px_rgba(16,185,129,0.6)] transition hover:brightness-110"
+                        onClick={() => setCollapsed((value) => !value)}
+                        aria-expanded={expanded}
+                        aria-controls={SIDEBAR_NAV_ID}
+                        aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
+                        title={expanded ? "Collapse sidebar" : "Expand sidebar"}
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#2c4633] transition hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-strong/60"
                     >
-                        BT
+                        {expanded ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
                     </button>
-                    <span className={`flex-1 text-xl font-black tracking-tight text-[#14231a] transition-all duration-300 ${expanded ? "max-w-[160px] opacity-100" : "max-w-0 opacity-0"} overflow-hidden whitespace-nowrap`}>Bhoomitra</span>
                 </div>
 
                 {/* Nav */}
-                <nav className="scrollbar-thin scrollbar-thumb-emerald-100 min-h-0 w-full flex-1 space-y-1.5 overflow-y-auto px-3 py-2">
-                    {navItems.map((item) => {
-                        const Icon = item.icon
-                        const isActive = pathname === item.href
-                        return (
-                            <Link
-                                key={item.name}
-                                href={item.href}
-                                prefetch
-                                title={!expanded ? item.name : undefined}
-                                onMouseEnter={() => router.prefetch(item.href)}
-                                onClick={() => { if (pathname !== item.href) setIsLoading(true) }}
-                                className={`group/nav relative flex items-center gap-4 rounded-2xl px-3.5 py-3 transition-all duration-200 ${isActive
-                                    ? "bg-brand-strong text-white shadow-[0_0_22px_-6px_rgba(16,185,129,0.7)]"
-                                    : "text-[#2c4633] hover:bg-emerald-50"
-                                    }`}
-                            >
-                                {isActive && !expanded && <span className="absolute right-1 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-white" />}
-                                <Icon size={22} className="shrink-0" />
-                                <span className={`text-sm font-bold whitespace-nowrap transition-all duration-300 ${expanded ? "max-w-[180px] opacity-100" : "max-w-0 opacity-0"} overflow-hidden`}>{item.name}</span>
-                            </Link>
-                        )
-                    })}
+                <nav id={SIDEBAR_NAV_ID} className="scrollbar-thin scrollbar-thumb-emerald-100 min-h-0 w-full flex-1 overflow-y-auto px-3 py-2">
+                    {visibleGroups.map((group, groupIndex) => (
+                        <div key={group.label} className={groupIndex > 0 ? "mt-5" : ""}>
+                            {expanded ? (
+                                <p className="px-3.5 pb-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-[#8aa696]">{group.label}</p>
+                            ) : groupIndex > 0 ? (
+                                <div className="mx-4 mb-2 border-t border-emerald-50" />
+                            ) : null}
+                            <div className="space-y-1.5">
+                                {group.items.map((item) => {
+                                    const Icon = item.icon
+                                    const isActive = pathname === item.href
+                                    return (
+                                        <Link
+                                            key={item.href}
+                                            href={item.href}
+                                            prefetch
+                                            title={!expanded ? item.name : undefined}
+                                            onMouseEnter={() => router.prefetch(item.href)}
+                                            onClick={() => { if (pathname !== item.href) setIsLoading(true) }}
+                                            className={`group/nav relative flex items-center gap-4 rounded-2xl px-3.5 py-3 transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-strong/60 ${isActive
+                                                ? "bg-brand-strong text-white shadow-[0_0_22px_-6px_rgba(16,185,129,0.7)]"
+                                                : "text-[#2c4633] hover:bg-emerald-50"
+                                                }`}
+                                        >
+                                            {isActive && !expanded && <span className="absolute right-1 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-white" />}
+                                            <Icon size={22} className="shrink-0" />
+                                            <span className={`text-sm font-bold whitespace-nowrap transition-all duration-300 ${expanded ? "max-w-[180px] opacity-100" : "max-w-0 opacity-0"} overflow-hidden`}>{item.name}</span>
+                                        </Link>
+                                    )
+                                })}
+                            </div>
+                        </div>
+                    ))}
                 </nav>
 
                 {/* Logout */}
@@ -154,7 +210,7 @@ export default function DashboardLayout({
                     <button
                         onClick={handleLogout}
                         title={!expanded ? t("nav.logout") : undefined}
-                        className="flex w-full items-center gap-4 rounded-2xl px-3.5 py-3 text-red-600 transition-all duration-200 hover:bg-red-50"
+                        className="flex w-full items-center gap-4 rounded-2xl px-3.5 py-3 text-red-600 transition-all duration-200 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
                     >
                         <LogOut size={22} className="shrink-0" />
                         <span className={`text-sm font-bold whitespace-nowrap transition-all duration-300 ${expanded ? "max-w-[180px] opacity-100" : "max-w-0 opacity-0"} overflow-hidden`}>{t("nav.logout")}</span>
@@ -162,9 +218,11 @@ export default function DashboardLayout({
                 </div>
             </aside>
 
-            {/* ===== MAIN CONTENT ===== */}
-            <main className="flex-1 ml-20 p-10 min-h-screen">
-                <div className="bg-white rounded-[2.5rem] shadow-2xl p-10 min-h-full border border-green-50">
+            {/* ===== MAIN CONTENT =====
+                Margin tracks the sidebar's actual current width so content is
+                never covered, whether the sidebar is collapsed or expanded. */}
+            <main className={`min-h-screen flex-1 transition-[margin-left] duration-300 ease-out ${expanded ? "ml-72" : "ml-20"}`}>
+                <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 sm:py-8 md:px-10 md:py-10">
                     {children}
                 </div>
             </main>

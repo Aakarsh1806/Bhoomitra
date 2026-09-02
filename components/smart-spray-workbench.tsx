@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { toast } from "sonner"
-import { AlertCircle, Clock, CloudRain, Droplets, FlaskConical, History, Loader2, MapPin, RefreshCw, Sprout, Zap } from "lucide-react"
+import { AlertCircle, AlertTriangle, CheckCircle2, Clock, CloudRain, Droplets, FlaskConical, History, Loader2, MapPin, RefreshCw, Sprout, Zap } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -178,6 +178,40 @@ export default function SmartSprayWorkbench() {
       ? `Rain likely in ~${weather.nextRainHours ?? 3}h`
       : "No rain in the immediate window"
 
+  // Same underlying decision (sprayDecision) — just read closely enough to
+  // give rain holds a distinct, more urgent warning treatment than a
+  // routine wind/VPD hold, instead of one flat "not allowed" state.
+  const isRainHold = !weatherAllowsApplication && (sprayDecision?.action === "hold_for_rain" || Boolean(weather?.providerReportedRain))
+  const weatherSafety = weatherAllowsApplication
+    ? {
+        badge: "SAFE",
+        heading: "Safe to spray",
+        icon: CheckCircle2,
+        border: "border-emerald-300",
+        bg: "bg-emerald-50",
+        text: "text-emerald-800",
+        chip: "bg-emerald-600",
+      }
+    : isRainHold
+      ? {
+          badge: "HOLD",
+          heading: "Hold — rain risk",
+          icon: CloudRain,
+          border: "border-red-300",
+          bg: "bg-red-50",
+          text: "text-red-800",
+          chip: "bg-red-600",
+        }
+      : {
+          badge: "HOLD",
+          heading: "Spraying held",
+          icon: AlertTriangle,
+          border: "border-amber-300",
+          bg: "bg-amber-50",
+          text: "text-amber-800",
+          chip: "bg-amber-600",
+        }
+
   const waterLiters = Number(carrierWater)
   const capacityLiters = Number(tankCapacity)
   const rate = Number(labelRate)
@@ -270,16 +304,38 @@ export default function SmartSprayWorkbench() {
           </div>
         </div>
 
-        {/* Prototype profile + weather safety */}
+        {/* Active detections + weather safety */}
         <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-4">
-            <p className="text-xs font-black uppercase tracking-wide text-blue-800">Prototype control profile</p>
-            <p className="mt-1 text-sm text-slate-700">Physical pump control is wired to A1–A4. Each command is one 3-second pulse — the app never invents a delivered volume in litres.</p>
+          <div className="rounded-xl border border-red-100 bg-red-50/60 p-4">
+            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-red-700"><AlertCircle className="h-4 w-4" /> Active Detections</p>
+            {activeZones.length > 0 ? (
+              <ul className="mt-2 space-y-2">
+                {activeZones.map(zone => (
+                  <li key={zone.id} className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold text-slate-800">{titleCase(zone.canonicalDisease || zone.disease)}</span>
+                    <span className="shrink-0 rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700">{zone.id}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-1.5 text-sm text-slate-500">No active disease detections right now.</p>
+            )}
           </div>
-          <div className={`rounded-xl border p-4 ${weatherAllowsApplication ? "border-emerald-100 bg-emerald-50/70" : "border-amber-100 bg-amber-50/70"}`}>
-            <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-700"><CloudRain className="h-4 w-4" /> Weather safety · Regional Weather API ({weatherSourceLabel})</p>
-            <p className={`mt-1 text-sm font-bold ${weatherAllowsApplication ? "text-emerald-800" : "text-amber-800"}`}>{weatherAllowsApplication ? "Conditions look safe for spraying" : "Spraying held"}</p>
-            <p className="mt-0.5 text-xs text-slate-600">{sprayDecision?.reason || "Loading weather decision"} · wind {forecastWind != null ? `${forecastWind} km/h from ${forecastWindDirection}` : "updating"} · {rainSignal}</p>
+          <div className={`rounded-xl border-2 p-4 ${weatherSafety.border} ${weatherSafety.bg}`}>
+            <div className="flex items-center justify-between gap-2">
+              <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-slate-600"><CloudRain className="h-4 w-4" /> Weather Safety</p>
+              <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-black uppercase text-white ${weatherSafety.chip}`}>
+                {weatherSafety.badge}
+              </span>
+            </div>
+            <div className="mt-2.5 flex items-center gap-3">
+              <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-white ${weatherSafety.chip}`}>
+                <weatherSafety.icon className="h-5 w-5" />
+              </span>
+              <p className={`text-xl font-black leading-snug ${weatherSafety.text}`}>{weatherSafety.heading}</p>
+            </div>
+            <p className="mt-2.5 text-sm text-slate-700">{sprayDecision?.reason || "Loading weather decision"}</p>
+            <p className="mt-1 text-xs text-slate-500">wind {forecastWind != null ? `${forecastWind} km/h from ${forecastWindDirection}` : "updating"} · {rainSignal} · {weatherSourceLabel} data</p>
           </div>
         </div>
 
@@ -538,19 +594,6 @@ export default function SmartSprayWorkbench() {
                     {!inPilotControlArea ? "Select A1–A4 to control the pump" : waterValidation ? "Run water-pump test" : weatherAllowsApplication ? "Queue confirmed application" : "Weather hold — cannot queue"}
                   </Button>
                   <p className="text-center text-[10px] text-slate-400">One command = one physical 3-second pulse. Volume is estimated (conservative) from the base-pump rated flow — add a flow sensor to meter it exactly.</p>
-                </CardContent>
-              </Card>
-
-              {/* Live pump status */}
-              <Card className="border-slate-200 shadow-sm">
-                <CardHeader className="pb-2">
-                  <CardTitle className="text-base">Live pump status</CardTitle>
-                  <CardDescription>waiting → sent → running → confirmed</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-2 text-sm">
-                  <div className="flex justify-between"><span className="text-slate-500">Waiting in queue</span><span className="font-bold">{queuedCommands || "None"}</span></div>
-                  <div className="flex justify-between"><span className="text-slate-500">Pump right now</span><span className="font-bold capitalize">{hardware.awaitingFeedback ? "Running…" : hardware.currentAction || "Idle"}</span></div>
-                  <div className="flex justify-between gap-3"><span className="shrink-0 text-slate-500">Last message</span><span className="text-right text-xs font-medium">{hardware.lastFeedback || "Waiting for controller."}</span></div>
                 </CardContent>
               </Card>
             </div>

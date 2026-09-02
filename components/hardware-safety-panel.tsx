@@ -2,10 +2,9 @@
 
 import { useEffect, useState } from "react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useTranslation } from "@/lib/use-translation"
-import { ShieldAlert, Route, Pipette, Activity } from "lucide-react"
+import { ShieldAlert } from "lucide-react"
 
 type HardwareState = {
   killSwitchEngaged: boolean
@@ -70,20 +69,18 @@ export default function HardwareSafetyPanel() {
     }
   }
 
-  const pathLabel = hardwareState.currentPath.length > 0 ? hardwareState.currentPath.join(" → ") : "Idle"
-
   return (
     <Card className="border-red-200 bg-red-50/40 shadow-sm">
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-3">
+      <CardHeader className="pb-4">
+        <div className="flex items-center justify-between gap-3">
           <div>
             <CardTitle className="flex items-center gap-2 text-base">
               <ShieldAlert className="h-5 w-5 text-red-600" />
               {t("hardware.killSwitch")}
             </CardTitle>
-            <CardDescription>{t("hardware.description", "Emergency stop with live controller status")}</CardDescription>
+            <CardDescription>Emergency stop</CardDescription>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <span className="text-xs text-muted-foreground">OFF</span>
             <Button
               type="button"
@@ -99,35 +96,6 @@ export default function HardwareSafetyPanel() {
           </div>
         </div>
       </CardHeader>
-      <CardContent className="space-y-3 text-sm">
-        <div className="flex items-center justify-between rounded-lg bg-white p-3 border">
-          <span className="text-muted-foreground flex items-center gap-2"><Activity className="h-4 w-4" /> {t("hardware.mode")}</span>
-          <Badge variant={hardwareState.killSwitchEngaged ? "destructive" : "secondary"}>
-            {hardwareState.killSwitchEngaged ? t("hardware.automationLocked") : t("hardware.ready")}
-          </Badge>
-        </div>
-        <div className="flex items-center justify-between rounded-lg bg-white p-3 border">
-          <span className="text-muted-foreground flex items-center gap-2"><Route className="h-4 w-4" /> {t("hardware.path")}</span>
-          <span className="font-medium text-right">{pathLabel}</span>
-        </div>
-        <div className="flex items-center justify-between rounded-lg bg-white p-3 border">
-          <span className="text-muted-foreground flex items-center gap-2"><Pipette className="h-4 w-4" /> {t("zone.nozzle")}</span>
-          <span className="font-medium capitalize">{hardwareState.nozzleStatus}</span>
-        </div>
-        <div className="rounded-lg bg-white p-3 border">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-muted-foreground">{t("hardware.feedback")}</span>
-            <span className="font-medium text-right">
-              {hardwareState.lastFeedback || (hardwareState.awaitingFeedback ? t("hardware.waiting", "Waiting for hardware response") : t("hardware.none", "None yet"))}
-            </span>
-          </div>
-          {hardwareState.lastCommand && (
-            <p className="mt-2 text-xs text-muted-foreground">
-              {t("hardware.lastCommand")}: {hardwareState.lastCommand}
-            </p>
-          )}
-        </div>
-      </CardContent>
     </Card>
   )
 }
