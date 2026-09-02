@@ -120,6 +120,16 @@ const statusStyle: Record<PestStatus, string> = {
   resolved: "bg-slate-100 text-slate-700",
 }
 
+const confidenceBandStyle: Record<ConfidenceBand, { badge: string; bar: string; label: string }> = {
+  high: { badge: "bg-green-100 text-green-800", bar: "bg-green-600", label: "High" },
+  medium: { badge: "bg-amber-100 text-amber-900", bar: "bg-amber-500", label: "Medium" },
+  low: { badge: "bg-red-100 text-red-800", bar: "bg-red-500", label: "Low" },
+}
+
+function formatConfidence(value: number) {
+  return `${Math.round(value * 100)}%`
+}
+
 function formatDate(value: string) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return "Unknown time"
@@ -489,6 +499,40 @@ export default function PestDetectionPage() {
                     <p className="mt-5 text-sm font-bold uppercase tracking-[0.18em] text-green-700">Possible pest</p>
                     <h2 className="mt-1 text-3xl font-black text-slate-950">{result.summary.primaryPestName}</h2>
                     <p className="mt-1 text-sm italic text-slate-500">{result.summary.scientificName}</p>
+
+                    <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Model confidence</p>
+                        <Badge className={`${confidenceBandStyle[result.summary.confidenceBand].badge} shadow-none`}>
+                          {confidenceBandStyle[result.summary.confidenceBand].label}
+                        </Badge>
+                      </div>
+                      <div className="mt-2 flex items-center gap-3">
+                        <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
+                          <div
+                            className={`h-full rounded-full transition-all ${confidenceBandStyle[result.summary.confidenceBand].bar}`}
+                            style={{ width: `${Math.max(0, Math.min(100, result.summary.confidence * 100))}%` }}
+                          />
+                        </div>
+                        <span className="text-lg font-black text-slate-800">{formatConfidence(result.summary.confidence)}</span>
+                      </div>
+                      {result.summary.identityNeedsReview && (
+                        <p className="mt-2 text-xs font-semibold text-amber-700">Below 60% — retake the photo or get an expert check before acting.</p>
+                      )}
+
+                      {result.predictions.length > 1 && (
+                        <div className="mt-4 space-y-2 border-t border-slate-200 pt-3">
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Other possible matches</p>
+                          {result.predictions.slice(1).map((prediction) => (
+                            <div key={prediction.label} className="flex items-center justify-between gap-3 text-sm">
+                              <span className="font-semibold text-slate-600">{prediction.label}</span>
+                              <span className="font-bold text-slate-500">{formatConfidence(prediction.confidence)}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
                     <p className="mt-5 text-sm font-medium leading-6 text-slate-600">{result.classificationLimit}</p>
                     <Button variant="outline" className="mt-5 w-full rounded-xl" onClick={speakAdvice}>
                       <Volume2 className="mr-2 h-4 w-4" /> Listen to advice
@@ -637,6 +681,9 @@ export default function PestDetectionPage() {
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Badge variant="outline">Zone {record.zoneId}</Badge>
                     <Badge variant="outline">{record.crop}</Badge>
+                    <Badge className={`${confidenceBandStyle[record.confidenceBand].badge} shadow-none`}>
+                      {formatConfidence(record.confidence)} confidence
+                    </Badge>
                   </div>
                   <div className="mt-4 rounded-xl bg-slate-50 p-3 text-center">
                     <p className="text-sm font-bold text-slate-800">{formatDate(record.timestamp)}</p>
