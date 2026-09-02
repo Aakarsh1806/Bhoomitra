@@ -502,7 +502,7 @@ export default function PestDetectionPage() {
                     <h2 className="mt-1 text-3xl font-black text-slate-950">{result.summary.primaryPestName}</h2>
                     <p className="mt-1 text-sm italic text-slate-500">{result.summary.scientificName}</p>
 
-                    {result.summary.confidence > MIN_CONFIDENCE_TO_SHOW ? (
+                    {result.summary.confidence > MIN_CONFIDENCE_TO_SHOW && (
                       <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
                         <div className="flex items-center justify-between">
                           <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Model confidence</p>
@@ -531,10 +531,6 @@ export default function PestDetectionPage() {
                             ))}
                           </div>
                         )}
-                      </div>
-                    ) : (
-                      <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
-                        Confidence score not shown — below the reporting threshold. Retake the photo in better light or get an expert check before acting.
                       </div>
                     )}
 
