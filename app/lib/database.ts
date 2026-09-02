@@ -7,6 +7,7 @@ const MAX_DETECTIONS = 5000
 const MAX_SPRAYS = 5000
 const MAX_ACTIVITY = 5000
 const MAX_WATERLOG = 5000
+const MAX_PEST_DETECTIONS = 5000
 
 type DBShape = {
   detections: any[]
@@ -16,6 +17,10 @@ type DBShape = {
   // Unified, farmId-stamped volume ledger — the single source of truth for
   // every litre the pump moves (spray + irrigation). Analytics reads from here.
   waterLog: any[]
+  // Pest observations are deliberately separate from crop-disease scans.
+  // Object detections carry counts and bounding boxes, while disease records
+  // carry one classifier label for the complete image.
+  pestDetections: any[]
 }
 
 function ensureArchiveDir() {
@@ -31,10 +36,11 @@ function normalizeDB(data: any): DBShape {
     zoneHistory: Array.isArray(data?.zoneHistory) ? data.zoneHistory : [],
     activityLog: Array.isArray(data?.activityLog) ? data.activityLog : [],
     waterLog: Array.isArray(data?.waterLog) ? data.waterLog : [],
+    pestDetections: Array.isArray(data?.pestDetections) ? data.pestDetections : [],
   }
 }
 
-function archiveOverflow(key: "detections" | "sprays" | "activityLog" | "waterLog", items: any[]) {
+function archiveOverflow(key: "detections" | "sprays" | "activityLog" | "waterLog" | "pestDetections", items: any[]) {
   if (items.length === 0) return
   ensureArchiveDir()
   const ts = new Date().toISOString().replace(/[:.]/g, "-")
@@ -62,6 +68,11 @@ function applyRetention(db: DBShape) {
     const overflow = db.waterLog.splice(0, db.waterLog.length - MAX_WATERLOG)
     archiveOverflow("waterLog", overflow)
   }
+
+  if (db.pestDetections.length > MAX_PEST_DETECTIONS) {
+    const overflow = db.pestDetections.splice(0, db.pestDetections.length - MAX_PEST_DETECTIONS)
+    archiveOverflow("pestDetections", overflow)
+  }
 }
 
 export function readDB() {
@@ -75,6 +86,7 @@ export function readDB() {
       zoneHistory: [],
       activityLog: [],
       waterLog: [],
+      pestDetections: [],
     }
     fs.writeFileSync(dbPath, JSON.stringify(initialData, null, 2))
     return initialData
