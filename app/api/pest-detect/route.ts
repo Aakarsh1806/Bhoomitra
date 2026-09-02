@@ -8,7 +8,6 @@ export const dynamic = "force-dynamic"
 const PEST_ML_SERVICE_URL = process.env.PEST_ML_SERVICE_URL ?? "http://127.0.0.1:5001"
 const MODEL_TIMEOUT_MS = 30_000
 const IDENTITY_CONFIDENCE_GATE = 0.6
-const MIN_CONFIDENCE_TO_STORE = 0.65
 
 type ServicePrediction = {
   classId?: number
@@ -150,11 +149,10 @@ export async function POST(request: Request) {
         ? "The " + primaryKnowledge.commonName + " guide is not verified for " + crop + ". Confirm with local extension."
         : "A classifier cannot measure field infestation. Scout the field and confirm the local action threshold before spraying."
     const timestamp = new Date().toISOString()
-    const shouldStore = confidence > MIN_CONFIDENCE_TO_STORE
 
     const result = {
       success: true,
-      persisted: shouldStore,
+      persisted: true,
       model: {
         modelId: modelBody?.modelId || "bhoomitra_pest_classifier_v1",
         modelVersion: modelBody?.modelVersion || "1.0.0",
@@ -202,25 +200,23 @@ export async function POST(request: Request) {
       },
     }
 
-    const record = shouldStore
-      ? savePestRecord({
-          zoneId,
-          crop,
-          pestId: primaryKnowledge.id,
-          pestName: primaryKnowledge.commonName,
-          scientificName: primaryKnowledge.scientificName,
-          confidence,
-          confidenceBand: band,
-          cropMatch,
-          predictions,
-          imageName: file.name,
-          modelId: result.model.modelId,
-          modelVersion: result.model.modelVersion,
-          farmerConfirmed: false,
-        })
-      : null
+    const record = savePestRecord({
+      zoneId,
+      crop,
+      pestId: primaryKnowledge.id,
+      pestName: primaryKnowledge.commonName,
+      scientificName: primaryKnowledge.scientificName,
+      confidence,
+      confidenceBand: band,
+      cropMatch,
+      predictions,
+      imageName: file.name,
+      modelId: result.model.modelId,
+      modelVersion: result.model.modelVersion,
+      farmerConfirmed: false,
+    })
 
-    return NextResponse.json({ ...result, recordId: record?.id ?? null })
+    return NextResponse.json({ ...result, recordId: record.id })
   } catch (error) {
     console.error("Pest classification route failed", error)
     const message = error instanceof Error ? error.message : "The pest check could not be completed."

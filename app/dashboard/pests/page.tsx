@@ -444,7 +444,7 @@ export default function PestDetectionPage() {
               {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Microscope className="mr-2 h-5 w-5" />}
               Check this photo
             </Button>
-            <p className="text-center text-sm leading-5 text-slate-500">Only real model results are shown. Scans above {formatConfidence(MIN_CONFIDENCE_TO_SHOW)} confidence are saved to pest history.</p>
+            <p className="text-center text-sm leading-5 text-slate-500">Only real model results are shown and saved to pest history.</p>
           </CardContent>
         </Card>
 
@@ -538,20 +538,14 @@ export default function PestDetectionPage() {
                     <Button variant="outline" className="mt-5 w-full rounded-xl" onClick={speakAdvice}>
                       <Volume2 className="mr-2 h-4 w-4" /> Listen to advice
                     </Button>
-                    {result.recordId ? (
-                      <Button
-                        className="mt-3 h-12 w-full rounded-xl bg-green-700 text-base font-bold hover:bg-green-800"
-                        disabled={confirming || (result.persisted && history.some((record) => record.id === result.recordId && record.farmerConfirmed))}
-                        onClick={() => void confirmResult()}
-                      >
-                        {confirming ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
-                        Confirm and save observation
-                      </Button>
-                    ) : (
-                      <p className="mt-3 rounded-xl bg-slate-100 p-3 text-center text-sm font-semibold text-slate-500">
-                        Not saved to pest history — confidence was below {formatConfidence(MIN_CONFIDENCE_TO_SHOW)}.
-                      </p>
-                    )}
+                    <Button
+                      className="mt-3 h-12 w-full rounded-xl bg-green-700 text-base font-bold hover:bg-green-800"
+                      disabled={confirming || (result.persisted && history.some((record) => record.id === result.recordId && record.farmerConfirmed))}
+                      onClick={() => void confirmResult()}
+                    >
+                      {confirming ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
+                      Confirm and save observation
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
