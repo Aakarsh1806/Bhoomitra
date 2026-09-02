@@ -4,8 +4,8 @@
   "private": true,
   "scripts": {
     "build": "next build",
-    "predev": "npx kill-port 3000 && cmd /c \"if exist dist rd /s /q dist && if exist .next rd /s /q .next\"",
-    "dev": "start \"\" http://localhost:3000 && next dev",
+    "predev": "npx kill-port 3000 && node -e \"const fs=require('fs'); for (const path of ['dist','.next']) fs.rmSync(path,{recursive:true,force:true})\"",
+    "dev": "next dev",
     "lint": "next lint",
     "start": "next start"
   },
