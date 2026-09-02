@@ -21,6 +21,7 @@ import {
     Radar,
     PanelLeftClose,
     PanelLeftOpen,
+    Bug,
 } from "lucide-react"
 
 type NavItem = {
@@ -91,6 +92,7 @@ export default function DashboardLayout({
                 { name: t("nav.detection"), href: "/dashboard/detection", icon: Microscope },
                 { name: t("nav.autospray"), href: "/dashboard/autospray", icon: SprayCan },
                 { name: t("nav.map"), href: "/dashboard/map", icon: Map },
+                { name: t("nav.pests"), href: "/dashboard/pests", icon: Bug },
                 { name: "Spread Control", href: "/dashboard/spread-control", icon: Radar },
             ],
         },

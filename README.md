@@ -5,19 +5,21 @@ Bhoomitra helps smallholder farmers detect crop diseases from a leaf photo, get 
 ## What it does
 
 1. **AI disease detection** — upload a leaf photo; a MobileNetV2 model (trained on the 38-class PlantVillage dataset) identifies the crop and disease with a confidence score.
-2. **Severity scoring + IPM recommendation** — confidence is mapped to a severity level, and the system looks up a treatment: active ingredient, dosage, spray interval, pre-harvest interval, resistance group, and an organic alternative. Low-confidence predictions deliberately get *no* pesticide recommendation — the farmer is told to retake the photo and consult local extension.
-3. **Farm map & zone monitoring** — the farm is divided into grid zones with live soil moisture, temperature, and humidity. Zones are color-coded by moisture thresholds, and a VPD (vapor pressure deficit) calculation gates spraying to the optimal weather window.
-4. **Smart irrigation** — per-zone timed hydration cycles (10 min on / 50 min off), auto-stop on wet threshold, stuck-sensor detection, ripening-mode lockout, and a global "Hydrate" that targets only dry zones.
-5. **Spread Control AI** — simulates disease spread across plots (BFS over the farm grid) and computes the best treatment plan under a budget (greedy optimization). See `SPREAD_CONTROL_GUIDE.md`.
-6. **Multilingual UI** — English, Hindi, Marathi, Tamil, Telugu. See `MULTILINGUAL.md`.
-7. **Safety first** — spraying is never an automatic ML side effect. Every spray requires explicit farmer confirmation, and a hardware kill switch blocks all commands.
+2. **Pest classification and prevention** — a separate MobileNetV3 TorchScript model identifies the dominant pest class from 19 trained categories and returns top-three probabilities. Each category has distinct damage signs, scouting steps, prevention, lower-impact controls, and cautious crop-aware pesticide guidance. Predictions below 60% are explicitly marked uncertain.
+3. **Severity scoring + IPM recommendation** — confidence is mapped to a severity level, and the system looks up a treatment: active ingredient, dosage, spray interval, pre-harvest interval, resistance group, and an organic alternative. Low-confidence predictions deliberately get *no* pesticide recommendation — the farmer is told to retake the photo and consult local extension.
+4. **Farm map & zone monitoring** — the farm is divided into grid zones with live soil moisture, temperature, and humidity. Zones are color-coded by moisture thresholds, and a VPD (vapor pressure deficit) calculation gates spraying to the optimal weather window.
+5. **Smart irrigation** — per-zone timed hydration cycles (10 min on / 50 min off), auto-stop on wet threshold, stuck-sensor detection, ripening-mode lockout, and a global "Hydrate" that targets only dry zones.
+6. **Spread Control AI** — simulates disease spread across plots (BFS over the farm grid) and computes the best treatment plan under a budget (greedy optimization). See `SPREAD_CONTROL_GUIDE.md`.
+7. **Multilingual UI** — English, Hindi, Marathi, Tamil, Telugu. See `MULTILINGUAL.md`.
+8. **Safety first** — spraying is never an automatic ML side effect. Every spray requires explicit farmer confirmation, and a hardware kill switch blocks all commands.
 
 ## Architecture
 
 ```
 Next.js 14 app (frontend + API routes, port 3000)
   ├── JSON-file database (app/data/db.json) — detections, sprays, activity log
-  ├── Flask ML microservice (ml_service/, port 5000) — image classification
+  ├── Flask disease ML service (ml_service/, port 5000) — crop-disease classification
+  ├── Flask pest ML service (pest_ml_service/, port 5001) — 19-class pest classification
   └── /api/sensor  ←→  hardware_bridge.py  ←→  ESP32 over USB serial
 ```
 
@@ -43,7 +45,12 @@ python -m venv ml_service/venv
 ml_service/venv/Scripts/pip install -r ml_service/requirements.txt
 ml_service/venv/Scripts/python ml_service/main.py    # port 5000
 
-# 3. (Optional) Hardware bridge — set your COM port in hardware_bridge.py
+# 3. Pest classifier service (separate terminal)
+python3 -m venv pest_ml_service/.venv
+pest_ml_service/.venv/bin/pip install -r pest_ml_service/requirements.txt
+pest_ml_service/.venv/bin/python pest_ml_service/main.py    # port 5001
+
+# 4. (Optional) Hardware bridge — set your COM port in hardware_bridge.py
 python hardware_bridge.py
 ```
 
