@@ -25,6 +25,7 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { useLanguage } from "@/lib/language-context"
+import { useTranslation } from "@/lib/use-translation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -120,10 +121,10 @@ const statusStyle: Record<PestStatus, string> = {
   resolved: "bg-slate-100 text-slate-700",
 }
 
-const confidenceBandStyle: Record<ConfidenceBand, { badge: string; bar: string; label: string }> = {
-  high: { badge: "bg-green-100 text-green-800", bar: "bg-green-600", label: "High" },
-  medium: { badge: "bg-amber-100 text-amber-900", bar: "bg-amber-500", label: "Medium" },
-  low: { badge: "bg-red-100 text-red-800", bar: "bg-red-500", label: "Low" },
+const confidenceBandStyle: Record<ConfidenceBand, { badge: string; bar: string; labelKey: "pests.confidence.high" | "pests.confidence.medium" | "pests.confidence.low" }> = {
+  high: { badge: "bg-green-100 text-green-800", bar: "bg-green-600", labelKey: "pests.confidence.high" as const },
+  medium: { badge: "bg-amber-100 text-amber-900", bar: "bg-amber-500", labelKey: "pests.confidence.medium" as const },
+  low: { badge: "bg-red-100 text-red-800", bar: "bg-red-500", labelKey: "pests.confidence.low" as const },
 }
 
 const MIN_CONFIDENCE_TO_SHOW = 0.65
@@ -162,6 +163,7 @@ export default function PestDetectionPage() {
   const { language } = useLanguage()
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
+  const t = useTranslation()
   const [zone, setZone] = useState("A1")
   const [crop, setCrop] = useState("Paddy")
   const [farmCrop, setFarmCrop] = useState("Paddy")
@@ -254,7 +256,7 @@ export default function PestDetectionPage() {
 
   const runScan = async () => {
     if (!file) {
-      toast.error("Take or choose a clear pest photo first.")
+      toast.error(t("pests.needPhotoFirst"))
       return
     }
 
@@ -277,7 +279,7 @@ export default function PestDetectionPage() {
         throw new Error(body?.error || "The pest check could not be completed.")
       }
       setResult(body)
-      toast.success(`Pest check completed for Zone ${zone}`)
+      toast.success(t("pests.checkComplete", { zone }))
       void refreshHistory()
     } catch (scanError) {
       const message = scanError instanceof Error ? scanError.message : "The pest check could not be completed."
@@ -305,10 +307,10 @@ export default function PestDetectionPage() {
       const body = await response.json()
       if (!response.ok) throw new Error(body?.error || "Could not save this observation.")
       setResult((current) => current ? { ...current, persisted: true, recordId: body.record?.id || current.recordId } : current)
-      toast.success("Confirmed and added to the crop-health audit")
+      toast.success(t("pests.confirmedToAudit"))
       await refreshHistory()
     } catch (confirmError) {
-      toast.error(confirmError instanceof Error ? confirmError.message : "Could not save this observation.")
+      toast.error(confirmError instanceof Error ? confirmError.message : t("pests.couldNotSaveObservation"))
     } finally {
       setConfirming(false)
     }
@@ -323,16 +325,16 @@ export default function PestDetectionPage() {
       })
       const body = await response.json()
       if (!response.ok) throw new Error(body?.error || "Could not save the follow-up.")
-      toast.success("Follow-up saved")
+      toast.success(t("pests.followUpSaved"))
       await refreshHistory()
     } catch (outcomeError) {
-      toast.error(outcomeError instanceof Error ? outcomeError.message : "Could not save the follow-up.")
+      toast.error(outcomeError instanceof Error ? outcomeError.message : t("pests.couldNotSaveFollowUp"))
     }
   }
 
   const speakAdvice = () => {
     if (!result || typeof window === "undefined" || !("speechSynthesis" in window)) {
-      toast.error("Voice playback is not supported on this device.")
+      toast.error(t("pests.voiceUnsupported"))
       return
     }
     const words = [
@@ -346,28 +348,35 @@ export default function PestDetectionPage() {
     window.speechSynthesis.speak(utterance)
   }
 
+  const pestStatusKey: Record<PestStatus, "pests.status.new" | "pests.status.monitoring" | "pests.status.increasing" | "pests.status.improving" | "pests.status.resolved"> = {
+    new: "pests.status.new",
+    monitoring: "pests.status.monitoring",
+    increasing: "pests.status.increasing",
+    improving: "pests.status.improving",
+    resolved: "pests.status.resolved",
+  }
   const sprayDecisionReady = false
-  const sprayDecisionTitle = "Do not spray from an image result alone"
+  const sprayDecisionTitle = t("pests.doNotSprayFromImage")
 
   return (
     <div className="min-h-screen space-y-8 pb-12 animate-in fade-in duration-500">
       <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="flex items-center gap-3 text-3xl font-extrabold text-[#1a2e1d] md:text-4xl">
+          <h1 className="flex items-center gap-3 text-2xl font-extrabold text-[#1a2e1d] md:text-4xl">
             <Bug className="h-9 w-9 text-green-700" />
-            Pest Detection &amp; Prevention
+            {t("pests.pageTitle")}
           </h1>
           <p className="mt-2 max-w-3xl text-base font-medium text-[#4a634f] md:text-lg">
-            Photograph the pest clearly, identify its likely class, and get a pest-specific scouting and prevention plan.
+            {t("pests.pageSubtitle")}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge variant="outline" className="gap-2 rounded-full border-green-200 bg-white px-4 py-2 text-green-800">
-            <CloudOff className="h-4 w-4" /> Offline-ready workflow
+            <CloudOff className="h-4 w-4" /> {t("pests.offlineReady")}
           </Badge>
           <Badge variant="outline" className={`gap-2 rounded-full px-4 py-2 ${modelStatus?.model?.ready ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
             <span className={`h-2 w-2 rounded-full ${modelStatus?.model?.ready ? "bg-green-500" : "bg-amber-500"}`} />
-            {modelStatus?.model?.ready ? `Pest model ready · ${modelStatus.model.classCount || 19} classes` : "Pest model unavailable"}
+            {modelStatus?.model?.ready ? t("pests.modelReady", { count: modelStatus.model.classCount || 19 }) : t("pests.modelUnavailable")}
           </Badge>
         </div>
       </header>
@@ -376,9 +385,9 @@ export default function PestDetectionPage() {
         <Card className="overflow-hidden rounded-[2rem] border-green-100 shadow-lg xl:col-span-3">
           <CardHeader className="bg-green-50/70 pb-4">
             <CardTitle className="flex items-center gap-2 text-xl">
-              <Camera className="h-5 w-5 text-green-700" /> Check a plant
+              <Camera className="h-5 w-5 text-green-700" /> {t("pests.checkAPlant")}
             </CardTitle>
-            <CardDescription>Use one clear close-up. Include the insect and its damage where possible.</CardDescription>
+            <CardDescription>{t("pests.checkAPlantDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4 pt-5">
             <button
@@ -388,16 +397,16 @@ export default function PestDetectionPage() {
             >
               {preview ? (
                 <>
-                  <img src={preview} alt="Pest photo preview" className="h-full w-full object-cover" />
-                  <span className="absolute bottom-3 rounded-full bg-black/70 px-4 py-2 text-xs font-bold text-white">Tap to change photo</span>
+                  <img src={preview} alt={t("pests.photoPreviewAlt")} className="h-full w-full object-cover" />
+                  <span className="absolute bottom-3 rounded-full bg-black/70 px-4 py-2 text-xs font-bold text-white">{t("pests.tapToChange")}</span>
                 </>
               ) : (
                 <span className="flex flex-col items-center p-4">
                   <span className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-green-100 text-green-700">
                     <ImagePlus className="h-6 w-6" />
                   </span>
-                  <span className="font-bold text-green-900">Take or choose a pest photo</span>
-                  <span className="mt-1 text-sm leading-5 text-slate-500">Natural light · insect in focus</span>
+                  <span className="font-bold text-green-900">{t("pests.takePhoto")}</span>
+                  <span className="mt-1 text-sm leading-5 text-slate-500">{t("pests.photoHint")}</span>
                 </span>
               )}
             </button>
@@ -413,28 +422,28 @@ export default function PestDetectionPage() {
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
                 <label className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                  <MapPin className="h-4 w-4 text-green-700" /> Field zone
+                  <MapPin className="h-4 w-4 text-green-700" /> {t("pests.fieldZone")}
                 </label>
                 <Select value={zone} onValueChange={setZone}>
-                  <SelectTrigger className="h-12 rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-12 rounded-xl text-base md:text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {zoneOptions.map((item) => <SelectItem key={item} value={item}>Zone {item}</SelectItem>)}
+                    {zoneOptions.map((item) => <SelectItem key={item} value={item}>{t("pests.zoneLabel", { zone: item })}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
                 <label className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                  <Leaf className="h-4 w-4 text-green-700" /> Crop
+                  <Leaf className="h-4 w-4 text-green-700" /> {t("pests.crop")}
                 </label>
                 <Select value={crop} onValueChange={setCrop}>
-                  <SelectTrigger className="h-12 rounded-xl"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="h-12 rounded-xl text-base md:text-sm"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {cropOptions.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
             </div>
-            <p className="text-sm leading-5 text-slate-500">Registered crop: {farmCrop}. Guidance is checked against the selected crop.</p>
+            <p className="text-sm leading-5 text-slate-500">{t("pests.registeredCrop", { crop: farmCrop })}</p>
 
             <Button
               className="h-12 w-full rounded-xl bg-green-700 text-base font-bold hover:bg-green-800"
@@ -442,9 +451,9 @@ export default function PestDetectionPage() {
               onClick={() => void runScan()}
             >
               {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Microscope className="mr-2 h-5 w-5" />}
-              Check this photo
+              {t("pests.checkPhoto")}
             </Button>
-            <p className="text-center text-sm leading-5 text-slate-500">Only real model results are shown and saved to pest history.</p>
+            <p className="text-center text-sm leading-5 text-slate-500">{t("pests.onlyRealResults")}</p>
           </CardContent>
         </Card>
 
@@ -454,22 +463,22 @@ export default function PestDetectionPage() {
               <CardContent className="flex gap-4 p-6">
                 <AlertTriangle className="mt-1 h-7 w-7 shrink-0 text-amber-700" />
                 <div>
-                  <h2 className="text-lg font-extrabold text-amber-950">Pest analysis could not run</h2>
+                  <h2 className="text-lg font-extrabold text-amber-950">{t("pests.analysisFailed")}</h2>
                   <p className="mt-1 text-sm leading-6 text-amber-900">{error}</p>
-                  {nextStep && <p className="mt-3 rounded-xl bg-white/70 p-3 text-sm font-semibold text-amber-950">Next model step: {nextStep}</p>}
+                  {nextStep && <p className="mt-3 rounded-xl bg-white/70 p-3 text-sm font-semibold text-amber-950">{t("pests.nextModelStep", { step: nextStep })}</p>}
                 </div>
               </CardContent>
             </Card>
           ) : !result ? (
-            <Card className="flex min-h-[430px] items-center justify-center rounded-[2rem] border-green-100 bg-gradient-to-br from-white to-green-50/60 shadow-sm">
-              <CardContent className="max-w-xl p-10 text-center">
+            <Card className="flex min-h-[240px] md:min-h-[430px] items-center justify-center rounded-[2rem] border-green-100 bg-gradient-to-br from-white to-green-50/60 shadow-sm">
+              <CardContent className="max-w-xl p-6 md:p-10 text-center">
                 <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-green-100 text-green-700">
                   <Eye className="h-10 w-10" />
                 </div>
-                <h2 className="text-2xl font-extrabold text-slate-900">What you will receive</h2>
-                <p className="mt-3 leading-7 text-slate-600">A likely pest identification with crop-specific damage signs, scouting steps, prevention and pesticide safety guidance.</p>
+                <h2 className="text-2xl font-extrabold text-slate-900">{t("pests.whatYouReceive")}</h2>
+                <p className="mt-3 leading-7 text-slate-600">{t("pests.whatYouReceiveDesc")}</p>
                 <div className="mt-7 grid gap-3 text-left sm:grid-cols-2">
-                  {["What pest?", "What should I do?"].map((item) => (
+                  {[t("pests.whatPest"), t("pests.whatShouldIDo")].map((item) => (
                     <div key={item} className="rounded-2xl border border-green-100 bg-white p-4 text-center text-sm font-extrabold text-green-900 shadow-sm">{item}</div>
                   ))}
                 </div>
@@ -478,36 +487,36 @@ export default function PestDetectionPage() {
           ) : (
             <>
               <Card className="overflow-hidden rounded-[2rem] border-green-100 shadow-lg">
-                <div className="bg-green-700 px-6 py-3 text-sm font-extrabold text-white">Real image analysed by the Bhoomitra pest classifier</div>
+                <div className="bg-green-700 px-6 py-3 text-sm font-extrabold text-white">{t("pests.analysedBanner")}</div>
                 <CardContent className="grid gap-6 p-6 lg:grid-cols-2">
                   <div className="relative aspect-[4/3] overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-emerald-100 via-green-50 to-lime-100">
                     {preview ? (
-                      <img src={preview} alt="Uploaded pest photo" className="h-full w-full object-contain" />
+                      <img src={preview} alt={t("pests.uploadedPhotoAlt")} className="h-full w-full object-contain" />
                     ) : (
                       <div className="absolute inset-0 flex items-center justify-center">
                         <Leaf className="h-40 w-40 rotate-[-18deg] text-green-600/70" />
                       </div>
                     )}
                     <div className="absolute bottom-3 left-3 right-3 rounded-xl bg-black/75 px-3 py-2 text-xs font-bold text-white">
-                      Classifier result: identifies the dominant pest category; it does not locate or count insects.
+                      {t("pests.classifierNote")}
                     </div>
                   </div>
 
                   <div className="flex flex-col justify-center">
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline">Zone {result.scan.zoneId}</Badge>
+                      <Badge variant="outline">{t("pests.zoneLabel", { zone: result.scan.zoneId })}</Badge>
                       <Badge variant="outline">{result.scan.crop}</Badge>
                     </div>
-                    <p className="mt-5 text-sm font-bold uppercase tracking-[0.18em] text-green-700">Possible pest</p>
+                    <p className="mt-5 text-sm font-bold uppercase tracking-[0.18em] text-green-700">{t("pests.possiblePest")}</p>
                     <h2 className="mt-1 text-3xl font-black text-slate-950">{result.summary.primaryPestName}</h2>
                     <p className="mt-1 text-sm italic text-slate-500">{result.summary.scientificName}</p>
 
                     {result.summary.confidence > MIN_CONFIDENCE_TO_SHOW && (
                       <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
                         <div className="flex items-center justify-between">
-                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Model confidence</p>
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("pests.modelConfidence")}</p>
                           <Badge className={`${confidenceBandStyle[result.summary.confidenceBand].badge} shadow-none`}>
-                            {confidenceBandStyle[result.summary.confidenceBand].label}
+                            {t(confidenceBandStyle[result.summary.confidenceBand].labelKey)}
                           </Badge>
                         </div>
                         <div className="mt-2 flex items-center gap-3">
@@ -522,7 +531,7 @@ export default function PestDetectionPage() {
 
                         {result.predictions.length > 1 && (
                           <div className="mt-4 space-y-2 border-t border-slate-200 pt-3">
-                            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Other possible matches</p>
+                            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("pests.otherMatches")}</p>
                             {result.predictions.slice(1).map((prediction) => (
                               <div key={prediction.label} className="flex items-center justify-between gap-3 text-sm">
                                 <span className="font-semibold text-slate-600">{prediction.label}</span>
@@ -536,7 +545,7 @@ export default function PestDetectionPage() {
 
                     <p className="mt-5 text-sm font-medium leading-6 text-slate-600">{result.classificationLimit}</p>
                     <Button variant="outline" className="mt-5 w-full rounded-xl" onClick={speakAdvice}>
-                      <Volume2 className="mr-2 h-4 w-4" /> Listen to advice
+                      <Volume2 className="mr-2 h-4 w-4" /> {t("pests.listenToAdvice")}
                     </Button>
                     <Button
                       className="mt-3 h-12 w-full rounded-xl bg-green-700 text-base font-bold hover:bg-green-800"
@@ -544,7 +553,7 @@ export default function PestDetectionPage() {
                       onClick={() => void confirmResult()}
                     >
                       {confirming ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
-                      Confirm and save observation
+                      {t("pests.confirmAndSave")}
                     </Button>
                   </div>
                 </CardContent>
@@ -559,22 +568,22 @@ export default function PestDetectionPage() {
         <>
           <Card className="rounded-[2rem] border-green-100 shadow-sm">
             <CardHeader className="pb-5">
-              <CardTitle className="flex items-center gap-3 text-3xl">
-                <Sprout className="h-8 w-8 text-green-700" /> Clear prevention plan
+              <CardTitle className="flex items-center gap-3 text-2xl md:text-3xl">
+                <Sprout className="h-8 w-8 text-green-700" /> {t("pests.preventionPlan")}
               </CardTitle>
-              <CardDescription className="text-base leading-7">Follow these steps before considering pesticide use.</CardDescription>
+              <CardDescription className="text-base leading-7">{t("pests.preventionPlanDesc")}</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-5 md:grid-cols-3">
               <div className="rounded-2xl border border-red-100 bg-red-50/60 p-6">
-                <p className="mb-5 flex items-center gap-2 text-lg font-extrabold text-red-900"><Clock3 className="h-6 w-6" /> Do today</p>
+                <p className="mb-5 flex items-center gap-2 text-lg font-extrabold text-red-900"><Clock3 className="h-6 w-6" /> {t("pests.doToday")}</p>
                 <ActionList items={result.advice.inspectToday} />
               </div>
               <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-6">
-                <p className="mb-5 flex items-center gap-2 text-lg font-extrabold text-amber-950"><ChevronRight className="h-6 w-6" /> Next 48 hours</p>
+                <p className="mb-5 flex items-center gap-2 text-lg font-extrabold text-amber-950"><ChevronRight className="h-6 w-6" /> {t("pests.next48Hours")}</p>
                 <ActionList items={result.advice.next48Hours} />
               </div>
               <div className="rounded-2xl border border-green-100 bg-green-50/70 p-6">
-                <p className="mb-5 flex items-center gap-2 text-lg font-extrabold text-green-900"><ShieldCheck className="h-6 w-6" /> Prevent it returning</p>
+                <p className="mb-5 flex items-center gap-2 text-lg font-extrabold text-green-900"><ShieldCheck className="h-6 w-6" /> {t("pests.preventReturn")}</p>
                 <ActionList items={result.advice.prevention} />
               </div>
             </CardContent>
@@ -584,64 +593,64 @@ export default function PestDetectionPage() {
             <CardHeader className="pb-5">
               <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                 <div>
-                  <CardTitle className="flex items-center gap-3 text-3xl">
-                    <FlaskConical className="h-8 w-8 text-blue-700" /> Treatment &amp; pesticide guidance
+                  <CardTitle className="flex items-center gap-3 text-2xl md:text-3xl">
+                    <FlaskConical className="h-8 w-8 text-blue-700" /> {t("pests.treatmentGuidance")}
                   </CardTitle>
-                  <CardDescription className="mt-2 text-base leading-7">Begin with the lowest-impact option. Use a pesticide only after field confirmation and a safe weather check.</CardDescription>
+                  <CardDescription className="mt-2 text-base leading-7">{t("pests.treatmentGuidanceDesc")}</CardDescription>
                 </div>
                 <Badge className={`px-4 py-2 text-sm ${sprayDecisionReady ? "bg-green-100 text-green-900" : "bg-red-100 text-red-900"}`}>
-                  {sprayDecisionReady ? "Conditions suitable for review" : "Do not spray now"}
+                  {sprayDecisionReady ? t("pests.conditionsSuitable") : t("pests.doNotSprayNow")}
                 </Badge>
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className={`rounded-2xl border p-6 ${sprayDecisionReady ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}`}>
-                <p className={`text-sm font-extrabold uppercase tracking-[0.16em] ${sprayDecisionReady ? "text-green-700" : "text-red-700"}`}>When should I spray?</p>
+                <p className={`text-sm font-extrabold uppercase tracking-[0.16em] ${sprayDecisionReady ? "text-green-700" : "text-red-700"}`}>{t("pests.whenShouldISpray")}</p>
                 <h3 className={`mt-2 text-2xl font-black ${sprayDecisionReady ? "text-green-950" : "text-red-950"}`}>{sprayDecisionTitle}</h3>
                 <p className="mt-3 text-base font-medium leading-7 text-slate-700">
                   {result.advice.pesticide.blockedReason || result.advice.pesticide.trigger}
                 </p>
                 <p className="mt-3 text-base font-bold leading-7 text-slate-900">
-                  Weather gate: {sprayWindow?.safeNow
-                    ? "Rain and wind are currently acceptable, but this is not permission to spray until field scouting confirms the pest and action threshold."
-                    : sprayWindow?.headline || "Check rain and wind before any spray."}
+                  {t("pests.weatherGate", { status: sprayWindow?.safeNow
+                    ? t("pests.weatherAcceptable")
+                    : sprayWindow?.headline || t("pests.checkRainAndWind") })}
                 </p>
               </div>
 
               <div className="grid gap-5 lg:grid-cols-3">
                 <section className="rounded-2xl border border-green-100 bg-green-50/60 p-6">
                   <p className="mb-5 flex items-center gap-2 text-xl font-extrabold text-green-950">
-                    <BadgeCheck className="h-6 w-6 text-green-700" /> 1. Try lower-impact control first
+                    <BadgeCheck className="h-6 w-6 text-green-700" /> {t("pests.step1")}
                   </p>
                   <ActionList items={result.advice.biologicalControl} />
                 </section>
 
                 <section className="rounded-2xl border border-amber-100 bg-amber-50/50 p-6">
                   <p className="mb-5 flex items-center gap-2 text-xl font-extrabold text-amber-950">
-                    <Clock3 className="h-6 w-6" /> 2. Spray only when all are true
+                    <Clock3 className="h-6 w-6" /> {t("pests.step2")}
                   </p>
                   <div className="space-y-4 text-base font-medium leading-7 text-slate-700">
-                    <p><strong className="text-slate-950">Pest confirmed:</strong> Check nearby plants—not only this photo.</p>
-                    <p><strong className="text-slate-950">Action threshold reached:</strong> Recount and act only if numbers are rising or local guidance recommends treatment.</p>
-                    <p><strong className="text-slate-950">Weather safe:</strong> No expected rain and no strong wind during application.</p>
+                    <p><strong className="text-slate-950">{t("pests.pestConfirmed")}</strong> {t("pests.pestConfirmedText")}</p>
+                    <p><strong className="text-slate-950">{t("pests.thresholdReached")}</strong> {t("pests.thresholdReachedText")}</p>
+                    <p><strong className="text-slate-950">{t("pests.weatherSafe")}</strong> {t("pests.weatherSafeText")}</p>
                   </div>
                 </section>
 
                 <section className="rounded-2xl border border-blue-100 bg-blue-50/50 p-6">
-                  <p className="text-sm font-extrabold uppercase tracking-wider text-blue-700">3. If spraying is necessary</p>
+                  <p className="text-sm font-extrabold uppercase tracking-wider text-blue-700">{t("pests.step3")}</p>
                   <p className="mt-2 text-xl font-extrabold leading-7 text-slate-950">{result.advice.pesticide.product}</p>
                   <p className="mt-2 text-base text-slate-600">{result.advice.pesticide.type}</p>
                   <Separator className="my-5" />
                   <div className="space-y-4 text-base leading-7">
-                    <p><strong className="text-slate-950">Where to apply:</strong> <span className="text-slate-700">{result.advice.pesticide.application}</span></p>
-                    <p><strong className="text-slate-950">How much:</strong> <span className="text-slate-700">{result.advice.pesticide.labelRate}</span></p>
-                    <p><strong className="text-slate-950">When to recheck:</strong> <span className="text-slate-700">{result.advice.pesticide.interval}</span></p>
+                    <p><strong className="text-slate-950">{t("pests.whereToApply")}</strong> <span className="text-slate-700">{result.advice.pesticide.application}</span></p>
+                    <p><strong className="text-slate-950">{t("pests.howMuch")}</strong> <span className="text-slate-700">{result.advice.pesticide.labelRate}</span></p>
+                    <p><strong className="text-slate-950">{t("pests.whenToRecheck")}</strong> <span className="text-slate-700">{result.advice.pesticide.interval}</span></p>
                   </div>
                 </section>
               </div>
 
               <div className="rounded-2xl bg-slate-900 p-6 text-base leading-7 text-white">
-                <strong className="text-lg">Safety:</strong> {result.advice.pesticide.safety} {result.advice.pesticide.resistanceNote} Pre-harvest interval: {result.advice.pesticide.preHarvestInterval}
+                <strong className="text-lg">{t("pests.safety")}</strong> {result.advice.pesticide.safety} {result.advice.pesticide.resistanceNote} {t("pests.preHarvestInterval", { value: result.advice.pesticide.preHarvestInterval })}
               </div>
             </CardContent>
           </Card>
@@ -652,22 +661,22 @@ export default function PestDetectionPage() {
         <CardHeader>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2 text-2xl"><History className="text-green-700" /> Pest history &amp; follow-up</CardTitle>
-              <CardDescription>Review real classifications over time and record whether crop damage is improving.</CardDescription>
+              <CardTitle className="flex items-center gap-2 text-2xl"><History className="text-green-700" /> {t("pests.historyTitle")}</CardTitle>
+              <CardDescription>{t("pests.historyDesc")}</CardDescription>
             </div>
             <div className="flex flex-wrap gap-2 text-xs font-bold">
-              <Badge variant="outline">{summary.active} active</Badge>
-              <Badge variant="outline" className="border-red-200 text-red-700">{summary.increasing} increasing</Badge>
-              <Badge variant="outline" className="border-amber-200 text-amber-800">{summary.followUpsDue} follow-ups due</Badge>
+              <Badge variant="outline">{t("pests.activeCount", { count: summary.active })}</Badge>
+              <Badge variant="outline" className="border-red-200 text-red-700">{t("pests.increasingCount", { count: summary.increasing })}</Badge>
+              <Badge variant="outline" className="border-amber-200 text-amber-800">{t("pests.followUpsDue", { count: summary.followUpsDue })}</Badge>
               <Button variant="ghost" size="sm" disabled={historyLoading} onClick={() => void refreshHistory()}>
-                <RefreshCw className={`mr-2 h-4 w-4 ${historyLoading ? "animate-spin" : ""}`} /> Refresh
+                <RefreshCw className={`mr-2 h-4 w-4 ${historyLoading ? "animate-spin" : ""}`} /> {t("pests.refresh")}
               </Button>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           {history.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">No pest observations saved yet. Confirm a result to begin the audit.</div>
+            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">{t("pests.noObservations")}</div>
           ) : (
             <div className="grid gap-4 lg:grid-cols-2">
               {history.slice(0, 8).map((record) => (
@@ -677,28 +686,28 @@ export default function PestDetectionPage() {
                       <p className="text-lg font-extrabold text-slate-900">{record.pestName}</p>
                       <p className="text-xs italic text-slate-500">{record.scientificName}</p>
                     </div>
-                    <Badge className={`${statusStyle[record.status]} capitalize shadow-none`}>{record.status}</Badge>
+                    <Badge className={`${statusStyle[record.status]} shadow-none`}>{t(pestStatusKey[record.status])}</Badge>
                   </div>
                   <div className="mt-4 flex flex-wrap gap-2">
-                    <Badge variant="outline">Zone {record.zoneId}</Badge>
+                    <Badge variant="outline">{t("pests.zoneLabel", { zone: record.zoneId })}</Badge>
                     <Badge variant="outline">{record.crop}</Badge>
                     {record.confidence > MIN_CONFIDENCE_TO_SHOW && (
                       <Badge className={`${confidenceBandStyle[record.confidenceBand].badge} shadow-none`}>
-                        {formatConfidence(record.confidence)} confidence
+                        {t("pests.confidenceSuffix", { value: formatConfidence(record.confidence) })}
                       </Badge>
                     )}
                   </div>
                   <div className="mt-4 rounded-xl bg-slate-50 p-3 text-center">
                     <p className="text-sm font-bold text-slate-800">{formatDate(record.timestamp)}</p>
-                    <p className="text-[10px] font-bold uppercase text-slate-500">checked</p>
+                    <p className="text-[10px] font-bold uppercase text-slate-500">{t("pests.checked")}</p>
                   </div>
-                  <p className="mt-4 text-xs font-bold text-slate-600">Follow-up: what do you see now?</p>
+                  <p className="mt-4 text-xs font-bold text-slate-600">{t("pests.followUpQuestion")}</p>
                   <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
                     {([
-                      ["Improving", "improving"],
-                      ["Same", "monitoring"],
-                      ["Increasing", "increasing"],
-                      ["Resolved", "resolved"],
+                      [t("pests.improving"), "improving"],
+                      [t("pests.same"), "monitoring"],
+                      [t("pests.increasing"), "increasing"],
+                      [t("pests.resolved"), "resolved"],
                     ] as [string, PestStatus][]).map(([label, value]) => (
                       <Button key={value} variant="outline" size="sm" className="h-9 rounded-lg px-2 text-xs" onClick={() => void updateOutcome(record.id, value)}>{label}</Button>
                     ))}

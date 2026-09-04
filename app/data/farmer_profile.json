@@ -27,13 +27,13 @@
     "sensor3": "A3"
   },
   "createdAt": "2026-04-06T07:43:18.222Z",
-  "updatedAt": "2026-08-21T08:25:31.575Z",
+  "updatedAt": "2026-08-22T05:31:49.596Z",
   "farmLocation": {
-    "label": "Current farm location",
-    "latitude": 51.507368,
-    "longitude": -0.127695,
-    "timezone": "Asia/Calcutta",
-    "source": "device",
-    "updatedAt": "2026-08-21T08:25:30.329Z"
+    "label": "Atmakur, Suryapet district, Telangana, India",
+    "latitude": 17.23345,
+    "longitude": 79.69582,
+    "timezone": "Asia/Kolkata",
+    "source": "search",
+    "updatedAt": "2026-08-22T05:31:45.853Z"
   }
 }

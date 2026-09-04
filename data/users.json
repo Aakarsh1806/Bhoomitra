@@ -6,22 +6,23 @@
     "password": "$2b$10$LAGmBJGO8A/k9ELDmRHUdeFUC/1XbKc4bczIj7Jnts1t1Yu0lhH/6",
     "role": "admin",
     "status": "active",
-    "lastLogin": "2026-07-18T15:27:58.167Z",
+    "lastLogin": "2026-08-22T05:51:51.098Z",
     "phone": "+91 9876543210",
     "location": "Central Farm Hub",
     "permissions": [
       "all"
     ],
-    "createdAt": "2026-01-01"
+    "createdAt": "2026-01-01",
+    "language": "en"
   },
   {
     "id": "2",
     "name": "Field Manager",
     "email": "manager@bhoomitra.ai",
-    "password": "password123",
+    "password": "$2b$10$WxR9H67gB1wvh3tbQPZxFOkf64ZV0oX0mvwrf1.GBGJgmROsiyx.2",
     "role": "manager",
     "status": "active",
-    "lastLogin": "2026-02-27T09:15:00.000Z",
+    "lastLogin": "2026-07-18T16:01:53.178Z",
     "phone": "+91 9876543211",
     "location": "North Sector",
     "permissions": [
@@ -48,5 +49,24 @@
     ],
     "id": "4jwux8cvm",
     "createdAt": "2026-02-27"
+  },
+  {
+    "id": "u_hs5sul3z",
+    "name": "Gopal reddy",
+    "phone": "+917816059708",
+    "role": "operator",
+    "status": "active",
+    "authMethod": "phone",
+    "phoneVerified": true,
+    "permissions": [
+      "dashboard",
+      "map",
+      "detection",
+      "spraying",
+      "analytics",
+      "recommendations"
+    ],
+    "createdAt": "2026-07-18T15:35:42.771Z",
+    "lastLogin": "2026-07-18T16:04:40.057Z"
   }
 ]

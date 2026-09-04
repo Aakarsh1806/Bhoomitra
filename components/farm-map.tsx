@@ -35,6 +35,7 @@ import type { FarmLocation } from "@/app/lib/farmLocation"
 import { getIrrigationPulsePlan, isDemoControlZone, MAX_IRRIGATION_PULSES, PUMP_CALIBRATED } from "@/app/lib/demoHardware"
 import { estimatePulseLitres, FLOW_CALIBRATED } from "@/app/lib/flowModel"
 import { interpretDetection, toneColor } from "@/app/lib/diseaseLanguage"
+import { useTranslation, usePluralTranslation } from "@/lib/use-translation"
 
 
 import { useFarmStore } from "@/store/farmStore"
@@ -241,6 +242,8 @@ function getIrrigationActionLabel(decision?: IrrigationDecision) {
 export default function FarmMap() {
   const [selectedZone, setSelectedZone] = useState<ZoneData | null>(null)
   const [isRecommendationOpen, setIsRecommendationOpen] = useState(false)
+  const t = useTranslation()
+  const tPlural = usePluralTranslation()
   const [isZoneDetailsOpen, setIsZoneDetailsOpen] = useState(false)
   const [isHydrating, setIsHydrating] = useState(false)
   const [isIrrigatingAll, setIsIrrigatingAll] = useState(false)
@@ -562,28 +565,28 @@ export default function FarmMap() {
 
     const actionLabel = isIrrigationPriority
       ? hasPrototypePump
-        ? `Queue water pulses for ${zoneLabel}`
-        : `Irrigation priority: ${zoneLabel}`
+        ? t("map.action.queuePulses", { zone: zoneLabel })
+        : t("map.action.irrigationPriority", { zone: zoneLabel })
       : irrigationDecision?.action === "defer_for_rain"
-        ? `Defer ${zoneLabel}`
+        ? t("map.action.defer", { zone: zoneLabel })
         : irrigationDecision?.action === "monitor_after_rain"
-          ? `Monitor ${zoneLabel} after rain`
-          : `Monitor ${zoneLabel}`
+          ? t("map.action.monitorAfterRain", { zone: zoneLabel })
+          : t("map.action.monitor", { zone: zoneLabel })
 
     const reasons = [
       zone.soilMoisture <= 25
-        ? "Soil moisture is critically low"
+        ? t("map.reason.criticallyLow")
         : zone.soilMoisture < irrigationMeta.dryThreshold
-          ? "Soil moisture below target"
-          : "Soil moisture is within the safe band",
-      irrigationDecision?.reason || "Farm weather decision is loading",
+          ? t("map.reason.belowTarget")
+          : t("map.reason.safeBand"),
+      irrigationDecision?.reason || t("map.reason.weatherLoading"),
       displayClimate.message,
       hasPrototypePump
-        ? `${pulsePlan.pulses} calibrated three-second water pulse${pulsePlan.pulses === 1 ? "" : "s"} available from the demo pump`
-        : "Map-and-monitor zone; the prototype irrigation pump is wired to A1–A4 only",
+        ? tPlural("map.reason.pulsesAvailable", pulsePlan.pulses)
+        : t("map.reason.mapMonitorOnly"),
       zone.lastIrrigated && new Date(zone.lastIrrigated).toDateString() === new Date().toDateString()
-        ? "A water pulse was already recorded today"
-        : "No irrigation recorded today",
+        ? t("map.reason.pulseRecordedToday")
+        : t("map.reason.noIrrigationToday"),
     ]
 
     return {
@@ -739,7 +742,7 @@ export default function FarmMap() {
 
   const handleSaveFarmLocation = async () => {
     if (!draftFarmLocation) {
-      setLocationError("Choose your farm location before saving.")
+      setLocationError(t("map.chooseLocationFirst"))
       return
     }
 
@@ -767,7 +770,7 @@ export default function FarmMap() {
       // judges see the selected farm's weather without waiting for polling.
       await fetchZones()
     } catch (error) {
-      setLocationError(error instanceof Error ? error.message : "Unable to save farm location")
+      setLocationError(error instanceof Error ? error.message : t("map.unableToSaveLocation"))
     } finally {
       setIsSavingLocation(false)
     }
@@ -814,24 +817,24 @@ export default function FarmMap() {
         {/* Header */}
         <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Interactive Farm Map</h1>
-            <p className="text-muted-foreground">Click a zone to review soil conditions, active diagnoses, and its safe action plan.</p>
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground">{t("map.pageTitle")}</h1>
+            <p className="text-muted-foreground">{t("map.pageSubtitle")}</p>
           </div>
 
           {/* Map Controls */}
           <div className="flex flex-wrap items-center gap-2 md:justify-end">
             {/* Zoom: segmented control with the level in the middle */}
             <div className="inline-flex h-9 items-center rounded-lg border border-input bg-transparent">
-              <Button variant="ghost" size="sm" onClick={handleZoomOut} title="Zoom out" className="h-full rounded-r-none px-2.5">
+              <Button variant="ghost" size="sm" onClick={handleZoomOut} title={t("map.zoomOut")} aria-label={t("map.zoomOut")} className="h-full rounded-r-none px-2.5">
                 <ZoomOut className="h-4 w-4" />
               </Button>
               <span className="min-w-[3.25rem] border-x border-input px-2 text-center text-sm tabular-nums text-muted-foreground">
                 {Math.round(zoomLevel * 100)}%
               </span>
-              <Button variant="ghost" size="sm" onClick={handleZoomIn} title="Zoom in" className="h-full rounded-none px-2.5">
+              <Button variant="ghost" size="sm" onClick={handleZoomIn} title={t("map.zoomIn")} aria-label={t("map.zoomIn")} className="h-full rounded-none px-2.5">
                 <ZoomIn className="h-4 w-4" />
               </Button>
-              <Button variant="ghost" size="sm" onClick={handleReset} title="Reset view" className="h-full rounded-l-none border-l border-input px-2.5">
+              <Button variant="ghost" size="sm" onClick={handleReset} title={t("map.resetView")} aria-label={t("map.resetView")} className="h-full rounded-l-none border-l border-input px-2.5">
                 <RotateCcw className="h-4 w-4" />
               </Button>
             </div>
@@ -849,13 +852,13 @@ export default function FarmMap() {
                 className={`h-9 ${farmLocationLabel ? "bg-transparent" : "bg-[#3a7d44] text-white hover:bg-[#2e6336]"}`}
               >
                 <MapPin className="mr-1.5 h-4 w-4" />
-                {farmLocationLabel ? "Farm Location" : "Set Farm Location"}
+                {farmLocationLabel ? t("map.farmLocation") : t("map.setFarmLocation")}
               </Button>
               <Button variant="outline" size="sm" onClick={handleReconfigureFarm} className="h-9 bg-transparent">
-                Reconfigure Farm
+                {t("map.reconfigureFarmBtn")}
               </Button>
               <Button variant="outline" size="sm" onClick={handleResetDetections} disabled={resettingDetections} className="h-9 bg-transparent">
-                {resettingDetections ? "Resetting…" : "Reset Detections"}
+                {resettingDetections ? t("map.resetting") : t("map.resetDetections")}
               </Button>
             </div>
           </div>
@@ -867,22 +870,22 @@ export default function FarmMap() {
             <div className="flex flex-wrap items-center gap-4">
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 rounded bg-green-500 border border-green-600" />
-                <span className="text-sm">Adequate soil moisture</span>
+                <span className="text-sm">{t("map.adequateMoisture")}</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 rounded bg-yellow-500 border border-yellow-600" />
-                <span className="text-sm">Below target moisture</span>
+                <span className="text-sm">{t("map.belowTargetMoisture")}</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 rounded bg-red-500 border border-red-600" />
-                <span className="text-sm">Low soil moisture</span>
+                <span className="text-sm">{t("map.lowMoisture")}</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="h-4 w-4 rounded border-2 border-red-500 bg-white ring-2 ring-red-300" />
-                <span className="text-sm">Active disease detection</span>
+                <span className="text-sm">{t("map.activeDiseaseDetection")}</span>
               </div>
               <Separator orientation="vertical" className="h-5" />
-              <p className="text-sm text-muted-foreground">Click on any zone for detailed information</p>
+              <p className="text-sm text-muted-foreground">{t("map.clickAnyZone")}</p>
             </div>
           </CardContent>
         </Card>
@@ -917,18 +920,18 @@ export default function FarmMap() {
                   <div className="min-w-0">
                     <p className="text-lg font-black leading-tight text-slate-900">
                       {!farmLocationLabel
-                        ? "Set farm location"
+                        ? t("map.setFarmLocationHeadline")
                         : !weatherDecisionUsable
-                        ? "Forecast refresh in progress"
+                        ? t("map.forecastRefresh")
                         : farmWeather?.providerReportedRain
-                        ? "Rain reported now"
+                        ? t("map.rainReportedNow")
                         : farmWeather?.imminentRain
-                          ? `Rain likely in ~${farmWeather.nextRainHours ?? 3}h`
-                          : farmWeather?.currentDescription || "Forecast refresh in progress"}
+                          ? t("map.rainLikelyIn", { hours: farmWeather.nextRainHours ?? 3 })
+                          : farmWeather?.currentDescription || t("map.forecastRefresh")}
                     </p>
                     <p className="mt-1 flex items-center gap-1 text-sm font-semibold text-sky-800">
                       <MapPin className="h-3.5 w-3.5 shrink-0" />
-                      <span className="truncate">{farmLocationLabel || "Location required"}</span>
+                      <span className="truncate">{farmLocationLabel || t("map.locationRequired")}</span>
                     </p>
                   </div>
                 </div>
@@ -939,34 +942,34 @@ export default function FarmMap() {
                     <div className="mt-4 grid grid-cols-2 gap-2.5 sm:grid-cols-5">
                       <WeatherStatTile
                         icon={<Thermometer className="h-3.5 w-3.5" />}
-                        label="Temperature"
+                        label={t("map.temperature")}
                         value={`${farmWeather.currentTemperature ?? displayClimate.temperature}°C`}
                       />
                       <WeatherStatTile
                         icon={<Droplets className="h-3.5 w-3.5" />}
-                        label="Humidity"
+                        label={t("map.humidity")}
                         value={`${farmWeather.currentHumidity ?? displayClimate.humidity}%`}
                       />
                       <WeatherStatTile
                         icon={<Wind className="h-3.5 w-3.5" />}
-                        label="Wind speed"
+                        label={t("map.windSpeed")}
                         value={`${farmWeather.currentWindSpeed ?? 0} km/h`}
                       />
                       <WeatherStatTile
                         icon={<CloudRain className="h-3.5 w-3.5" />}
-                        label="Rainfall"
+                        label={t("map.rainfall")}
                         value={
                           farmWeather.providerReportedRain
-                            ? "Raining now"
+                            ? t("map.rainingNow")
                             : farmWeather.imminentRain
-                              ? `Expected in ~${farmWeather.nextRainHours ?? 3}h`
-                              : "None expected soon"
+                              ? t("map.expectedIn", { hours: farmWeather.nextRainHours ?? 3 })
+                              : t("map.noneExpectedSoon")
                         }
                         tone={farmWeather.providerReportedRain || farmWeather.imminentRain ? "text-amber-700" : "text-slate-900"}
                       />
                       <WeatherStatTile
                         icon={<Clock3 className="h-3.5 w-3.5" />}
-                        label="Checked"
+                        label={t("map.checked")}
                         value={farmWeather.fetchedAt ? new Date(farmWeather.fetchedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
                       />
                     </div>
@@ -975,7 +978,7 @@ export default function FarmMap() {
                     <div className="mt-2.5 flex flex-1 flex-col justify-center rounded-lg border border-sky-100 bg-white p-3">
                       <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-sky-700">
                         <Sprout className="h-3.5 w-3.5" />
-                        Spray advisory
+                        {t("map.sprayAdvisory")}
                       </div>
                       <p className="mt-1 text-sm font-bold leading-snug text-slate-900">{farmWeatherAdvisory}</p>
                     </div>
@@ -995,9 +998,9 @@ export default function FarmMap() {
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-base">
                   <Droplets className="h-5 w-5 text-blue-600" />
-                  Irrigate Now
+                  {t("map.irrigateNow")}
                 </CardTitle>
-                <CardDescription>Start watering the zones that need it</CardDescription>
+                <CardDescription>{t("map.irrigateNowDesc")}</CardDescription>
               </CardHeader>
               <CardContent className="pt-0">
                 <Button
@@ -1007,16 +1010,16 @@ export default function FarmMap() {
                   onClick={() => setIsIrrigateConfirmOpen(true)}
                 >
                   <Droplets className="mr-2 h-4 w-4" />
-                  {isIrrigatingAll ? "Starting…" : "Irrigate Now"}
+                  {isIrrigatingAll ? t("map.starting") : t("map.irrigateNow")}
                 </Button>
                 <p className="mt-2 text-xs text-muted-foreground">
                   {irrigateNotice
                     ? irrigateNotice
                     : irrigationMeta.hydrateDisabled
-                      ? irrigationMeta.hydrateReason || "Irrigation is on hold right now."
+                      ? irrigationMeta.hydrateReason || t("map.irrigationOnHold")
                       : irrigationMeta.targetedZoneIds.length > 0
                         ? `Will start bounded pulses on ${irrigationMeta.targetedZoneIds.join(", ")}.`
-                        : "All pilot zones are above target — nothing to irrigate right now."}
+                        : t("map.allZonesAboveTarget")}
                 </p>
               </CardContent>
             </Card>
@@ -1054,24 +1057,24 @@ export default function FarmMap() {
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <MapPin className="h-5 w-5 text-primary" />
-                Farm Layout
+                {t("map.farmLayout")}
               </div>
 
               <div className="flex items-center gap-2 text-xs font-semibold text-[#3a7d44]">
                 <span className="h-2 w-2 rounded-full bg-[#3a7d44]"></span>
-                A1-A4 pump pilot
+                {t("map.pumpPilotBadge")}
               </div>
             </CardTitle>
             <CardDescription>
-              {mapZoneCount} zones across {rows} rows and {columns} columns ({farmProfile.acres} acres)
+              {t("map.layoutSummary", { count: mapZoneCount, rows, columns, acres: farmProfile.acres })}
             </CardDescription>
           </CardHeader>
 
           <CardContent>
             <div
-              className="grid gap-2 p-4 bg-muted/30 rounded-lg overflow-auto"
+              className="grid gap-2 p-4 bg-muted/30 rounded-lg overflow-auto [--zone-min:60px] md:[--zone-min:0px]"
               style={{
-                gridTemplateColumns: `repeat(${Math.max(columns, 1)}, minmax(0, 1fr))`,
+                gridTemplateColumns: `repeat(${Math.max(columns, 1)}, minmax(var(--zone-min), 1fr))`,
                 transform: `scale(${zoomLevel})`,
                 transformOrigin: "top left",
               }}
@@ -1102,7 +1105,7 @@ export default function FarmMap() {
                         title={zone.decisions.irrigation.reason}
                         className="mt-1 rounded bg-white/20 px-1 text-[8px] font-bold uppercase tracking-wide text-white"
                       >
-                        {zone.decisions.irrigation.action === "defer_for_rain" ? "Rain: defer" : "Rain: monitor"}
+                        {zone.decisions.irrigation.action === "defer_for_rain" ? t("map.rainDefer") : t("map.rainMonitor")}
                       </span>
                     )}
                   </div>
@@ -1142,10 +1145,10 @@ export default function FarmMap() {
 
               const label =
                 risk >= 60
-                  ? "High Alert"
+                  ? t("map.highAlert")
                   : risk >= 30
-                    ? "Monitor"
-                    : "Stable"
+                    ? t("map.monitor")
+                    : t("map.stable")
 
               const style =
                 risk >= 60
@@ -1170,14 +1173,14 @@ export default function FarmMap() {
                 {(() => {
                   const risk = Math.max(0, Math.min(100, farmRisk.currentRiskPercent))
 
-                  let label = "Stable"
+                  let label = t("map.stable")
                   let color = "text-green-600"
 
                   if (risk >= 60) {
-                    label = "Critical Outbreak Risk"
+                    label = t("map.criticalOutbreakRisk")
                     color = "text-red-600"
                   } else if (risk >= 30) {
-                    label = "Moderate Risk"
+                    label = t("map.moderateRisk")
                     color = "text-yellow-600"
                   }
 
@@ -1223,26 +1226,26 @@ export default function FarmMap() {
                 <div className="rounded-2xl border border-slate-200 bg-white/80 p-5 shadow-sm">
                   <div className="flex items-center gap-2">
                     <Gauge className="h-4 w-4 text-emerald-700" />
-                    <h4 className="text-sm font-semibold text-slate-900">Today&apos;s Farm Summary</h4>
+                    <h4 className="text-sm font-semibold text-slate-900">{t("map.todaysFarmSummary")}</h4>
                   </div>
 
                   <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <div className="rounded-xl border border-rose-100 bg-rose-50/80 p-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-rose-600">Irrigation pilot</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-rose-600">{t("map.irrigationPilot")}</p>
                       <p className="mt-1 text-sm font-bold text-slate-900">{farmSummary.pilotIrrigationRequired} of A1–A4 need water now</p>
                     </div>
                     <div className="rounded-xl border border-amber-100 bg-amber-50/80 p-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-600">Monitoring</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-amber-600">{t("map.monitoring")}</p>
                       <p className="mt-1 text-sm font-bold text-slate-900">{farmSummary.monitoringRequired} grids require monitoring</p>
                     </div>
                     <div className="rounded-xl border border-emerald-100 bg-emerald-50/80 p-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600">Healthy</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-emerald-600">{t("map.healthyLabel")}</p>
                       <p className="mt-1 text-sm font-bold text-slate-900">{farmSummary.healthyZones} healthy grids</p>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-3">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">Pumps</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">{t("map.pumps")}</p>
                       <p className="mt-1 text-sm font-bold text-slate-900">
-                        {farmSummary.noPumpsActive ? "No pumps currently active" : "Pumps currently active"}
+                        {farmSummary.noPumpsActive ? t("map.noPumpsActive") : t("map.pumpsActive")}
                       </p>
                     </div>
                   </div>
@@ -1251,7 +1254,7 @@ export default function FarmMap() {
                 {/* Only real, active classifier records appear here. */}
                 {activeDiseaseZones.length > 0 && (
                   <div>
-                    <h4 className="mb-3 text-sm font-semibold">Active Disease Detections</h4>
+                    <h4 className="mb-3 text-sm font-semibold">{t("map.activeDiseaseDetections")}</h4>
                     <div className="grid gap-4 md:grid-cols-3">
                       {activeDiseaseZones.slice(0, 3).map((zone) => {
                         const severity = zone.severityLevel || "review"
@@ -1284,7 +1287,7 @@ export default function FarmMap() {
           const watch = rec.priorityLabel === "Weather watch"
           const glowClass = urgent ? "glow-danger" : watch ? "glow-warn" : "glow-brand"
           const accent = urgent ? "var(--glow-danger)" : watch ? "var(--glow-warn)" : "var(--glow-brand)"
-          const priorityChip = urgent ? "Act now" : watch ? "Watch the sky" : "Steady — monitor"
+          const priorityChip = urgent ? t("map.actNow") : watch ? t("map.watchTheSky") : t("map.steadyMonitor")
           const moisture = selectedZone.soilMoisture
           const target = irrigationMeta.wetThreshold
           const dry = irrigationMeta.dryThreshold
@@ -1299,10 +1302,10 @@ export default function FarmMap() {
               })
             : null
           const briefing = urgent
-            ? `${getZoneLabel(selectedZone.id)} is dry at ${moisture}% — ${belowTarget} points below the ${target}% target. A bounded pulse loop brings it back without over-watering.`
+            ? t("map.briefing.urgent", { zone: getZoneLabel(selectedZone.id), moisture, below: belowTarget, target })
             : watch
-              ? `Soil is low but the forecast favours holding — irrigating now risks wash-off or waste. Reassess after the weather passes.`
-              : `Moisture sits in the safe band at ${moisture}%. No pump action needed — keep scouting and let the sensors watch it.`
+              ? t("map.briefing.watch")
+              : t("map.briefing.stable", { moisture })
           const moistureTone = moisture < dry ? "#f87171" : moisture < target ? "#fbbf24" : "#34d399"
           return (
             <div
@@ -1321,7 +1324,7 @@ export default function FarmMap() {
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-white/45">
-                        Action briefing · {getZoneLabel(selectedZone.id)}
+                        {t("map.actionBriefing", { zone: getZoneLabel(selectedZone.id) })}
                       </p>
                       <h3 className="text-gradient-brand mt-1 text-2xl font-black leading-tight">{rec.actionLabel}</h3>
                     </div>
@@ -1339,7 +1342,7 @@ export default function FarmMap() {
                   {/* Metric tiles */}
                   <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
                     <div className="glass rounded-2xl p-3.5">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-white/45">Soil moisture</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-white/45">{t("map.soilMoistureLabel")}</p>
                       <p className="mt-1 text-xl font-black text-white">
                         {moisture}<span className="text-sm font-semibold text-white/50">%</span>
                       </p>
@@ -1350,7 +1353,7 @@ export default function FarmMap() {
                     </div>
 
                     <div className="glass rounded-2xl p-3.5">
-                      <p className="text-[10px] font-semibold uppercase tracking-widest text-white/45">Pump plan</p>
+                      <p className="text-[10px] font-semibold uppercase tracking-widest text-white/45">{t("map.pumpPlan")}</p>
                       <p className="mt-1 text-xl font-black text-white">
                         {rec.pulseCount > 0 ? rec.pulseCount : selectedZoneHasPrototypePump ? "—" : "N/A"}
                         {rec.pulseCount > 0 && <span className="text-sm font-semibold text-white/50"> pulses</span>}
@@ -1359,39 +1362,39 @@ export default function FarmMap() {
                         {rec.pulseCount > 0
                           ? `3-second pulses · max ${MAX_IRRIGATION_PULSES}`
                           : selectedZoneHasPrototypePump
-                            ? "Review before a pulse"
-                            : "Map-and-monitor zone"}
+                            ? t("map.reviewBeforePulse")
+                            : t("map.mapMonitorZone")}
                       </p>
                     </div>
 
                     {leverage > 0 ? (
                       <div className="glass rounded-2xl p-3.5">
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-white/45">Spread leverage</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-white/45">{t("map.spreadLeverage")}</p>
                         <p className="mt-1 text-xl font-black text-white">
                           ~{leverage.toFixed(1)}<span className="text-sm font-semibold text-white/50"> inf.</span>
                         </p>
-                        <p className="mt-1.5 text-[10px] text-white/40">Avoided · 5-day model</p>
+                        <p className="mt-1.5 text-[10px] text-white/40">{t("map.avoidedModel")}</p>
                       </div>
                     ) : read ? (
                       <div className="glass rounded-2xl p-3.5">
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-white/45">Diagnosis</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-white/45">{t("map.diagnosis")}</p>
                         <p className="mt-1 text-sm font-bold leading-tight text-white">{selectedZone.disease}</p>
                         <p className="mt-1.5 text-[10px] text-white/40">{read.confidenceLabel}</p>
                       </div>
                     ) : (
                       <div className="glass rounded-2xl p-3.5">
-                        <p className="text-[10px] font-semibold uppercase tracking-widest text-white/45">Grid · pump</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-white/45">{t("map.gridPump")}</p>
                         <p className="mt-1 text-sm font-bold capitalize leading-tight text-white">
                           {(selectedZone.gridColor || "green")} · {(selectedZone.pumpStatus || "off")}
                         </p>
-                        <p className="mt-1.5 text-[10px] text-white/40">Live actuator state</p>
+                        <p className="mt-1.5 text-[10px] text-white/40">{t("map.liveActuatorState")}</p>
                       </div>
                     )}
                   </div>
 
                   {/* Why this call */}
                   <div className="glass mt-4 rounded-2xl p-4">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/45">Why this call</p>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/45">{t("map.whyThisCall")}</p>
                     <ul className="mt-2.5 space-y-2 text-sm text-white/75">
                       {rec.reasons.map((reason) => (
                         <li key={reason} className="flex gap-2.5">
@@ -1439,16 +1442,16 @@ export default function FarmMap() {
 
         {/* Zone Details — second popup, opened via "Read more" in the Action Briefing */}
         <Dialog open={isZoneDetailsOpen} onOpenChange={setIsZoneDetailsOpen}>
-          <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+          <DialogContent className="max-h-[85dvh] w-[calc(100vw-2rem)] overflow-y-auto sm:w-full sm:max-w-xl">
             {selectedZone && (
               <>
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
                     <Sprout className="h-5 w-5 text-green-600" />
-                    Zone Details
+                    {t("map.zoneDetailsTitle")}
                   </DialogTitle>
                   <DialogDescription>
-                    Information for {getZoneLabel(selectedZone.id)} ({selectedZone.id})
+                    {t("map.zoneDetailsDesc", { label: getZoneLabel(selectedZone.id), id: selectedZone.id })}
                   </DialogDescription>
                 </DialogHeader>
 
@@ -1469,17 +1472,17 @@ export default function FarmMap() {
                       }
                       className="capitalize"
                     >
-                      {selectedZone.activeDetection ? "disease alert" : selectedZone.cropReview ? "crop check" : selectedZone.status}
+                      {selectedZone.activeDetection ? t("map.diseaseAlert") : selectedZone.cropReview ? t("map.cropCheck") : selectedZone.status}
                     </Badge>
                     <span className="text-sm font-medium text-slate-600">
-                      {selectedZone.activeDetection ? "Review active diagnosis" : "Soil-based status"}
+                      {selectedZone.activeDetection ? t("map.reviewActiveDiagnosis") : t("map.soilBasedStatus")}
                     </span>
                   </div>
 
                   {/* Disease Info */}
                   {selectedZone.disease && (
                     <div className="p-3 rounded-lg bg-muted/50">
-                      <p className={`text-sm font-medium ${selectedZone.activeDetection ? "text-destructive" : selectedZone.cropReview ? "text-amber-700" : "text-slate-600"}`}>{selectedZone.activeDetection ? "Active diagnosis:" : selectedZone.cropReview ? "Crop confirmation needed:" : "Last treated diagnosis:"}</p>
+                      <p className={`text-sm font-medium ${selectedZone.activeDetection ? "text-destructive" : selectedZone.cropReview ? "text-amber-700" : "text-slate-600"}`}>{selectedZone.activeDetection ? t("map.activeDiagnosisLabel") : selectedZone.cropReview ? t("map.cropConfirmationNeeded") : t("map.lastTreatedDiagnosis")}</p>
                       <p className="text-sm">{selectedZone.disease}</p>
                     </div>
                   )}
@@ -1488,31 +1491,31 @@ export default function FarmMap() {
 
                   {/* Sensor Data */}
                   <div className="space-y-3">
-                    <h4 className="text-sm font-medium">Environmental Data</h4>
+                    <h4 className="text-sm font-medium">{t("map.environmentalData")}</h4>
 
                     <div className="flex items-center gap-3">
                       <Droplets className="h-4 w-4 text-blue-600" />
                       <div className="flex-1">
-                        <p className="text-sm">Soil Moisture</p>
+                        <p className="text-sm">{t("map.soilMoisture")}</p>
                         <p className="text-lg font-bold">{selectedZone.soilMoisture}%</p>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-xs">
                       <div className="rounded border p-2">
-                        <div className="text-slate-500">Grid</div>
+                        <div className="text-slate-500">{t("map.grid")}</div>
                         <div className="font-bold uppercase">{selectedZone.gridColor || "green"}</div>
                       </div>
                       <div className="rounded border p-2">
-                        <div className="text-slate-500">Pump</div>
+                        <div className="text-slate-500">{t("map.pump")}</div>
                         <div className="font-bold uppercase">{selectedZone.pumpStatus || "off"}</div>
                       </div>
                       <div className="rounded border p-2">
-                        <div className="text-slate-500">Cycle</div>
+                        <div className="text-slate-500">{t("map.cycle")}</div>
                         <div className="font-bold uppercase">{selectedZone.cycleStatus || "idle"}</div>
                       </div>
                       <div className="rounded border p-2">
-                        <div className="text-slate-500">Farm VPD</div>
+                        <div className="text-slate-500">{t("map.farmVpd")}</div>
                         <div className="font-bold uppercase">
                           {displayClimate.vpd.toFixed(2)} kPa ({displayClimate.vpdBand})
                         </div>
@@ -1524,23 +1527,23 @@ export default function FarmMap() {
 
                     {selectedZone.sensorError && (
                       <p className="text-xs font-semibold text-red-600">
-                        {selectedZone.sensorErrorMessage || "Sensor Error"}
+                        {selectedZone.sensorErrorMessage || t("map.sensorError")}
                       </p>
                     )}
 
                     {!selectedZone.decisions?.spray.allowed && (
-                      <p className="text-xs font-medium text-amber-700">{selectedZone.decisions?.spray.reason || "Spray conditions are being assessed"}</p>
+                      <p className="text-xs font-medium text-amber-700">{selectedZone.decisions?.spray.reason || t("map.sprayConditionsAssessed")}</p>
                     )}
 
                     <div className="rounded-lg border border-sky-100 bg-sky-50/60 p-3 text-xs text-slate-700">
                       <p className="font-bold text-sky-900">Irrigation decision: {getIrrigationActionLabel(selectedZone.decisions?.irrigation)}</p>
-                      <p className="mt-1">{selectedZone.decisions?.irrigation.reason || "Waiting for farm weather decision"}</p>
+                      <p className="mt-1">{selectedZone.decisions?.irrigation.reason || t("map.waitingWeatherDecision")}</p>
                     </div>
 
                     <div className="flex items-center gap-3">
                       <Thermometer className="h-4 w-4 text-orange-600" />
                       <div className="flex-1">
-                        <p className="text-sm">Farm Temperature</p>
+                        <p className="text-sm">{t("map.farmTemperature")}</p>
                         <p className="text-lg font-bold">{displayClimate ? `${displayClimate.temperature}°C` : "—"}</p>
                       </div>
                     </div>
@@ -1548,7 +1551,7 @@ export default function FarmMap() {
                     <div className="flex items-center gap-3">
                       <Wind className="h-4 w-4 text-green-600" />
                       <div className="flex-1">
-                        <p className="text-sm">Farm Humidity</p>
+                        <p className="text-sm">{t("map.farmHumidity")}</p>
                         <p className="text-lg font-bold">{displayClimate ? `${displayClimate.humidity}%` : "—"}</p>
                       </div>
                     </div>
@@ -1580,19 +1583,19 @@ export default function FarmMap() {
                             </div>
 
                             <div className="text-sm">
-                              <span className="text-muted-foreground">Spread risk:</span>{" "}
+                              <span className="text-muted-foreground">{t("map.spreadRisk")}</span>{" "}
                               <span className={risk.spreadColor}>{risk.spreadRisk}</span>
                               <p className="mt-0.5 text-xs text-muted-foreground">{risk.spreadReason}</p>
                             </div>
 
                             <div className="rounded-lg bg-white/70 p-3 text-sm">
-                              <span className="font-semibold text-slate-800">What to do: </span>
+                              <span className="font-semibold text-slate-800">{t("map.whatToDo")}</span>
                               <span className="text-slate-700">{risk.meaning}</span>
                             </div>
 
                             <div className="flex items-center justify-between text-xs text-muted-foreground">
-                              <span>Scanned: {selectedZone.lastAnalyzed ? formatDate(selectedZone.lastAnalyzed) : "This session"}</span>
-                              <span>Model assessment, not a lab result</span>
+                              <span>{t("map.scanned", { date: selectedZone.lastAnalyzed ? formatDate(selectedZone.lastAnalyzed) : t("map.thisSession") })}</span>
+                              <span>{t("map.modelAssessment")}</span>
                             </div>
                           </div>
                         )
@@ -1605,7 +1608,7 @@ export default function FarmMap() {
                         <h4 className="flex items-center gap-2 text-sm font-semibold text-emerald-900">
                           <CheckCircle className="h-4 w-4 text-emerald-600" /> AI Risk Analysis
                         </h4>
-                        <p className="mt-1 text-sm text-emerald-800">No active disease detected in this zone.</p>
+                        <p className="mt-1 text-sm text-emerald-800">{t("map.noActiveDisease")}</p>
                       </div>
                     </>
                   )}
@@ -1613,15 +1616,15 @@ export default function FarmMap() {
                   {/* Additional Info */}
                   <div className="space-y-2">
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Plant Count:</span>
+                      <span className="text-muted-foreground">{t("map.plantCount")}</span>
                       <span className="font-medium">{getCalculatedPlantCount()}</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Crop Density:</span>
+                      <span className="text-muted-foreground">{t("map.cropDensity")}</span>
                       <span className="font-medium">1 plant / {getDensityDivisor(farmProfile.primaryCrop)} sq yd</span>
                     </div>
                     <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Last Sprayed:</span>
+                      <span className="text-muted-foreground">{t("map.lastSprayed")}</span>
                       <span className="font-medium">
                         {formatDate(selectedZone.lastSprayed)}
                       </span>
@@ -1649,7 +1652,7 @@ export default function FarmMap() {
                             className={`text-[9px] font-black uppercase px-2 py-1 rounded-md border shadow-sm transition-all duration-300 ${cmd === "spray" ? "bg-green-50 text-green-700 border-green-200" : "bg-blue-50 text-blue-700 border-blue-200"
                               } translate-y-0 hover:-translate-y-0.5`}
                           >
-                            {i + 1}. {cmd === "spray" ? "ACTIVATE SPRAYER" : cmd === "stop" ? "STOP PUMP" : "PULSE WATER PUMP"}
+                            {i + 1}. {cmd === "spray" ? t("map.activateSprayer") : cmd === "stop" ? t("map.stopPump") : t("map.pulseWaterPump")}
                           </div>
                         ))}
                       </div>
@@ -1690,9 +1693,9 @@ export default function FarmMap() {
                           })
                           const result = await response.json().catch(() => ({}))
                           if (!response.ok) {
-                            setControlNotice(result?.message || "Water pulses could not be queued.")
+                            setControlNotice(result?.message || t("map.pulsesCouldNotQueue"))
                           } else {
-                            setControlNotice(result?.message || "Water pulse plan queued for the controller.")
+                            setControlNotice(result?.message || t("map.pulsePlanQueued"))
                           }
                           await fetchZones()
                         } finally {
@@ -1702,12 +1705,12 @@ export default function FarmMap() {
                     >
                       <Droplets className="mr-2 h-4 w-4" />
                       {isHydrating
-                        ? "Starting the loop…"
+                        ? t("map.startingLoop")
                         : !selectedZoneHasPrototypePump
-                          ? "Map-only zone (no pump)"
+                          ? t("map.mapOnlyZone")
                           : !selectedZone.decisions?.irrigation.allowsStart
                             ? getIrrigationActionLabel(selectedZone.decisions?.irrigation)
-                            : "Start bounded irrigation loop"}
+                            : t("map.startIrrigationLoop")}
                     </Button>
                     {selectedZoneHasPrototypePump && selectedZone.decisions?.irrigation.allowsStart && !isHydrating && (
                       <p className="mt-1 text-center text-[11px] text-slate-500">{irrigationLoopSubtext}</p>
@@ -1725,7 +1728,7 @@ export default function FarmMap() {
                     </Button>
 
                     <p className="text-xs text-muted-foreground">
-                      {controlNotice || selectedZone.decisions?.spray.reason || "Open the verified tank-mix and weather check before controlling the spray pump."}
+                      {controlNotice || selectedZone.decisions?.spray.reason || t("map.openTankMixCheck")}
                     </p>
                   </div>
                 </div>
@@ -1745,10 +1748,10 @@ export default function FarmMap() {
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <MapPin className="h-5 w-5 text-[#3a7d44]" />
-                Set your farm location
+                {t("map.setYourFarmLocation")}
               </DialogTitle>
               <DialogDescription>
-                Allow location access or search for the farm. Bhoomitra will use these coordinates for the weather forecast, rain-aware irrigation, and spray safety checks.
+                {t("map.locationDialogDesc")}
               </DialogDescription>
             </DialogHeader>
 
@@ -1758,7 +1761,7 @@ export default function FarmMap() {
                 setDraftFarmLocation(location)
                 setLocationError(null)
               }}
-              fallbackLabel="Current farm location"
+              fallbackLabel={t("map.currentFarmLocation")}
               disabled={isSavingLocation}
             />
 
@@ -1779,7 +1782,7 @@ export default function FarmMap() {
                 disabled={isSavingLocation || !draftFarmLocation}
                 className="bg-[#3a7d44] text-white hover:bg-[#2e6336]"
               >
-                {isSavingLocation ? "Saving location..." : "Save farm location"}
+                {isSavingLocation ? t("map.savingLocation") : t("map.saveFarmLocation")}
               </Button>
             </DialogFooter>
           </DialogContent>

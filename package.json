@@ -7,7 +7,10 @@
     "predev": "npx kill-port 3000 && node -e \"const fs=require('fs'); for (const path of ['dist','.next']) fs.rmSync(path,{recursive:true,force:true})\"",
     "dev": "next dev",
     "lint": "next lint",
-    "start": "next start"
+    "start": "next start",
+    "check:translations": "node scripts/check-translations.mjs",
+    "check:ui": "node scripts/check-ui-regressions.mjs",
+    "test": "node scripts/check-translations.mjs && node scripts/check-ui-regressions.mjs && tsc --noEmit"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

@@ -6,9 +6,8 @@ import './globals.css'
 import { AutomationProvider } from '@/lib/automation-context'
 import { LanguageProvider } from '@/lib/language-context'
 import { NavigationProvider } from '@/lib/navigation-context'
-import LanguageSelector from '@/components/language-selector'
+import FloatingLanguageSelector from '@/components/floating-language-selector'
 import NavigationLoadingIndicator from '@/components/navigation-loading-indicator'
-import GlobalRuntimeTranslator from '@/components/global-runtime-translator'
 import { Toaster } from "@/components/ui/sonner"
 
 export const metadata: Metadata = {
@@ -42,10 +41,7 @@ export default function RootLayout({
           <NavigationProvider>
             <AutomationProvider>
               <NavigationLoadingIndicator />
-              <div className="fixed right-4 top-4 z-[200]">
-                <LanguageSelector />
-              </div>
-              <GlobalRuntimeTranslator />
+              <FloatingLanguageSelector />
               {children}
               <Toaster position="top-right" richColors />
             </AutomationProvider>

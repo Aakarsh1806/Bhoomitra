@@ -10,17 +10,38 @@
 
 export type DetectionTone = "infected" | "likely" | "possible" | "review" | "healthy"
 
+/** Stable codes so the UI can localize; never build farmer-facing sentences here. */
+export type VerdictCode =
+  | "detectionRead.verdict.review"
+  | "detectionRead.verdict.healthy"
+  | "detectionRead.verdict.infected"
+  | "detectionRead.verdict.likely"
+  | "detectionRead.verdict.possible"
+
+export type ConfidenceCode =
+  | "detectionRead.confidence.review"
+  | "detectionRead.confidence.strong"
+  | "detectionRead.confidence.moderate"
+  | "detectionRead.confidence.weak"
+
 export type DetectionRead = {
+  /** English sentence, kept for non-UI consumers and as the fallback. */
   verdict: string
   tone: DetectionTone
   /** Small muted line, e.g. "strong match · 88%". */
   confidenceLabel: string
+  /** Translation key + params for the verdict line. */
+  verdictCode: VerdictCode
+  verdictParams: { crop: string; disease: string }
+  /** Translation key + params for the confidence subtext. */
+  confidenceCode: ConfidenceCode
+  confidenceParams: { pct: number }
 }
 
 function humaniseDisease(raw?: string) {
   if (!raw) return "a disease"
   const afterCrop = raw.includes("___") ? raw.split("___")[1] : raw
-  const cleaned = afterCrop.replace(/_/g, " ").replace(/\s+/g, " ").trim()
+  const cleaned = afterCrop.replace(/_/g, " ").replace(/s+/g, " ").trim()
   return cleaned || "a disease"
 }
 
@@ -34,20 +55,56 @@ export function interpretDetection(params: {
   const pct = Math.round((params.confidence ?? 0) * 100)
   const disease = humaniseDisease(params.disease)
   const crop = (params.crop || "crop").toLowerCase()
+  const base = { verdictParams: { crop, disease }, confidenceParams: { pct } }
 
   if (params.cropMatch === "review") {
-    return { verdict: "Confirm the crop before trusting this", tone: "review", confidenceLabel: `crop doesn't match the model · ${pct}%` }
+    return {
+      ...base,
+      verdict: "Confirm the crop before trusting this",
+      tone: "review",
+      confidenceLabel: `crop doesn't match the model · ${pct}%`,
+      verdictCode: "detectionRead.verdict.review",
+      confidenceCode: "detectionRead.confidence.review",
+    }
   }
   if (params.isHealthy) {
-    return { verdict: `Your ${crop} looks healthy`, tone: "healthy", confidenceLabel: `strong match · ${pct}%` }
+    return {
+      ...base,
+      verdict: `Your ${crop} looks healthy`,
+      tone: "healthy",
+      confidenceLabel: `strong match · ${pct}%`,
+      verdictCode: "detectionRead.verdict.healthy",
+      confidenceCode: "detectionRead.confidence.strong",
+    }
   }
   if (pct >= 85) {
-    return { verdict: `Your ${crop} is infected with ${disease}`, tone: "infected", confidenceLabel: `strong match · ${pct}%` }
+    return {
+      ...base,
+      verdict: `Your ${crop} is infected with ${disease}`,
+      tone: "infected",
+      confidenceLabel: `strong match · ${pct}%`,
+      verdictCode: "detectionRead.verdict.infected",
+      confidenceCode: "detectionRead.confidence.strong",
+    }
   }
   if (pct >= 65) {
-    return { verdict: `Likely ${disease} — worth confirming`, tone: "likely", confidenceLabel: `moderate match · ${pct}%` }
+    return {
+      ...base,
+      verdict: `Likely ${disease} — worth confirming`,
+      tone: "likely",
+      confidenceLabel: `moderate match · ${pct}%`,
+      verdictCode: "detectionRead.verdict.likely",
+      confidenceCode: "detectionRead.confidence.moderate",
+    }
   }
-  return { verdict: `Possibly ${disease} — rescan a clear leaf`, tone: "possible", confidenceLabel: `weak match · ${pct}%` }
+  return {
+    ...base,
+    verdict: `Possibly ${disease} — rescan a clear leaf`,
+    tone: "possible",
+    confidenceLabel: `weak match · ${pct}%`,
+    verdictCode: "detectionRead.verdict.possible",
+    confidenceCode: "detectionRead.confidence.weak",
+  }
 }
 
 export const toneColor: Record<DetectionTone, { text: string; bg: string; ring: string }> = {

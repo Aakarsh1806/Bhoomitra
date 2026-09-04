@@ -5,6 +5,7 @@ import { diseaseKnowledge } from "@/app/data/diseaseKnowledge"
 import { interpretDetection, toneColor } from "@/app/lib/diseaseLanguage"
 import { TELANGANA_OFFLINE_NOTICE } from "@/app/data/telanganaPesticideCatalog"
 import { toast } from "sonner"
+import { useTranslation } from "@/lib/use-translation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -60,6 +61,7 @@ export default function DetectionPage() {
   const [loading, setLoading] = useState(false)
   const [zone, setZone] = useState("A1")
   const [zoneOptions, setZoneOptions] = useState(FALLBACK_ZONE_IDS)
+  const t = useTranslation()
   const [scanCrop, setScanCrop] = useState("Paddy")
   const [farmCrop, setFarmCrop] = useState("Paddy")
   const [scanError, setScanError] = useState<string | null>(null)
@@ -136,13 +138,13 @@ export default function DetectionPage() {
           cropMatch: data.detection.cropMatch,
         })
 
-        toast.success(`Analysis complete for Zone ${scanZoneId}`)
+        toast.success(t("detection.analysisComplete", { zone: scanZoneId }))
       } else {
-        throw new Error(data?.error || "The scan could not be completed")
+        throw new Error(data?.error || t("detection.scanFailed"))
       }
     } catch (error) {
       console.error("Hardware detect error:", error)
-      const message = error instanceof Error ? error.message : "The scan could not be completed"
+      const message = error instanceof Error ? error.message : t("detection.scanFailed")
       setScanError(message)
       toast.error(message)
     } finally {
@@ -182,6 +184,14 @@ export default function DetectionPage() {
         result.severityLevel.slice(1)
       : null
 
+  // Canonical severity values stay untouched; only the displayed label is localized.
+  const severityKeyMap: Record<string, "detection.severity.high" | "detection.severity.moderate" | "detection.severity.low"> = {
+    High: "detection.severity.high",
+    Moderate: "detection.severity.moderate",
+    Low: "detection.severity.low",
+  }
+  const severityLabel = severity ? t(severityKeyMap[severity] ?? "detection.severity.moderate") : null
+  const severityWord = severity ? t(severityKeyMap[severity] ?? "detection.severity.moderate").toLowerCase() : t("detection.severityReview")
   const recommendation = result?.recommendation
   const recommendationName = recommendation
     ? `${recommendation.activeIngredient} ${recommendation.formulation || ""}`.trim()
@@ -199,17 +209,17 @@ export default function DetectionPage() {
       {/* Header Section */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-4xl font-extrabold text-[#1a2e1d] flex items-center gap-3">
+          <h1 className="text-2xl md:text-4xl font-extrabold text-[#1a2e1d] flex items-center gap-3">
             <Brain className="text-green-600 h-9 w-9" />
-            AI Disease Detection
+            {t("detection.pageTitle")}
           </h1>
           <p className="text-[#4a634f] mt-2 text-lg font-medium">
-            Upload leaf samples for instant pathology analysis & treatment plans.
+            {t("detection.pageSubtitle")}
           </p>
         </div>
         <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-2xl shadow-sm border border-green-100">
           <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-          <span className="text-sm font-bold text-green-800">Pathology model ready</span>
+          <span className="text-sm font-bold text-green-800">{t("detection.modelReady")}</span>
         </div>
       </div>
 
@@ -219,22 +229,22 @@ export default function DetectionPage() {
           <CardHeader className="bg-green-50/50 pb-8">
             <CardTitle className="text-xl flex items-center gap-2">
               <Camera className="h-5 w-5 text-green-600" />
-              Sample Analysis
+              {t("detection.sampleAnalysis")}
             </CardTitle>
-            <CardDescription>Select a high-resolution image of the affected leaf</CardDescription>
+            <CardDescription>{t("detection.sampleAnalysisDesc")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6 pt-8">
-            <div className="relative group border-2 border-dashed border-green-200 rounded-3xl aspect-square flex flex-col items-center justify-center bg-green-50/20 hover:bg-green-50/40 transition-all overflow-hidden">
+            <div className="relative group border-2 border-dashed border-green-200 rounded-3xl max-h-[220px] md:max-h-none aspect-square flex flex-col items-center justify-center bg-green-50/20 hover:bg-green-50/40 transition-all overflow-hidden">
               {preview ? (
                 <>
                   <img
                     src={preview}
-                    alt="Preview"
+                    alt={t("detection.previewAlt")}
                     className="object-cover w-full h-full"
                   />
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <Button variant="secondary" size="sm" onClick={() => document.getElementById('leaf-upload')?.click()}>
-                      Change Image
+                      {t("detection.changeImage")}
                     </Button>
                   </div>
                 </>
@@ -246,8 +256,8 @@ export default function DetectionPage() {
                   <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center text-green-600 mb-4">
                     <Upload className="h-8 w-8" />
                   </div>
-                  <p className="text-sm font-bold text-green-800">Click to upload or drag & drop</p>
-                  <p className="text-xs text-green-600/60 mt-2">PNG, JPG up to 10MB</p>
+                  <p className="text-sm font-bold text-green-800">{t("detection.uploadHint")}</p>
+                  <p className="text-xs text-green-600/60 mt-2">{t("detection.uploadFormats")}</p>
                 </div>
               )}
               <input
@@ -268,15 +278,15 @@ export default function DetectionPage() {
             <div className="space-y-2">
               <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-green-600" />
-                Select Farm Zone
+                {t("detection.selectFarmZone")}
               </label>
               <Select value={zone} onValueChange={setZone}>
-                <SelectTrigger className="rounded-xl border-green-100 h-12">
-                  <SelectValue placeholder="Select Zone" />
+                <SelectTrigger className="rounded-xl border-green-100 h-12 text-base md:text-sm">
+                  <SelectValue placeholder={t("detection.selectZonePlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   {zoneOptions.map(z => (
-                    <SelectItem key={z} value={z}>Zone {z}</SelectItem>
+                    <SelectItem key={z} value={z}>{t("detection.zoneLabel", { zone: z })}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -285,11 +295,11 @@ export default function DetectionPage() {
             <div className="space-y-2">
               <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
                 <Leaf className="h-4 w-4 text-green-600" />
-                Crop in this photo
+                {t("detection.cropInPhoto")}
               </label>
               <Select value={scanCrop} onValueChange={setScanCrop}>
-                <SelectTrigger className="rounded-xl border-green-100 h-12">
-                  <SelectValue placeholder="Select crop" />
+                <SelectTrigger className="rounded-xl border-green-100 h-12 text-base md:text-sm">
+                  <SelectValue placeholder={t("detection.selectCropPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   {cropOptions.map((crop) => (
@@ -297,7 +307,7 @@ export default function DetectionPage() {
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-slate-500">Registered farm crop: {farmCrop}. The scan is safety-checked against the crop selected here.</p>
+              <p className="text-xs text-slate-500">{t("detection.registeredCropNote", { crop: farmCrop })}</p>
             </div>
 
             <Button
@@ -308,12 +318,12 @@ export default function DetectionPage() {
               {loading ? (
                 <div className="flex items-center gap-2">
                   <div className="h-4 w-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  Neural Processing...
+                  {t("detection.processing")}
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
                   <Sparkles className="h-5 w-5" />
-                  Analyze Leaf Pattern
+                  {t("detection.analyzeButton")}
                 </div>
               )}
             </Button>
@@ -333,28 +343,28 @@ export default function DetectionPage() {
                       variant={severity === "High" ? "destructive" : severity === "Moderate" ? "warning" as any : "default"}
                       className="px-4 py-1 rounded-full uppercase tracking-widest font-black text-[10px]"
                     >
-                      {severity === "High" ? "Alert: Action Required" : severity === "Moderate" ? "Monitoring Required" : "System Normal"}
+                      {severity === "High" ? t("detection.alertActionRequired") : severity === "Moderate" ? t("detection.monitoringRequired") : t("detection.systemNormal")}
                     </Badge>
                     <div
                       className="max-w-[17rem] break-all text-right text-xs font-bold text-slate-400"
                       title={result.detectionId || undefined}
                     >
-                      Scan record: {result.detectionId || "—"}
+                      {t("detection.scanRecord", { id: result.detectionId || "—" })}
                     </div>
                   </div>
                   <CardTitle className={`text-3xl font-black mt-4 capitalize leading-tight ${detectionRead ? toneColor[detectionRead.tone].text : "text-slate-800"}`}>
-                    {detectionRead?.verdict || detectedCondition}
+                    {detectionRead ? t(detectionRead.verdictCode, detectionRead.verdictParams) : detectedCondition}
                   </CardTitle>
                   <CardDescription className="text-base font-medium">
-                    On {detectedCrop} · <span className="text-slate-400">{detectionRead?.confidenceLabel}</span>
+                    {t("detection.onCrop", { crop: detectedCrop })} · <span className="text-slate-400">{detectionRead ? t(detectionRead.confidenceCode, detectionRead.confidenceParams) : ""}</span>
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-8">
                   <div className="grid gap-4 md:grid-cols-4">
                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Match strength</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{t("detection.matchStrength")}</p>
                       <p className="mt-1 text-lg font-black capitalize text-slate-800">
-                        {result.confidence >= 0.85 ? "Strong" : result.confidence >= 0.65 ? "Moderate" : "Weak"}
+                        {result.confidence >= 0.85 ? t("detection.strong") : result.confidence >= 0.65 ? t("detection.moderate") : t("detection.weak")}
                       </p>
                       <div className="mt-1.5 flex items-center gap-2">
                         <Progress value={result.confidence * 100} className="h-1.5 flex-1 bg-slate-200" />
@@ -362,23 +372,23 @@ export default function DetectionPage() {
                       </div>
                     </div>
                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Severity Level</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{t("detection.severityLevel")}</p>
                       <p className={`text-2xl font-black mt-1 ${severity === "High" ? "text-red-600" : severity === "Moderate" ? "text-orange-600" : "text-green-600"}`}>
-                        {isHealthyResult ? "Healthy" : severity}
+                        {isHealthyResult ? t("detection.healthy") : severityLabel}
                       </p>
                     </div>
                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Scan Context</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{t("detection.scanContext")}</p>
                       <div className="flex items-center gap-2 mt-1">
                         <MapPin className="h-5 w-5 text-green-600" />
                         <div>
                           <p className="text-lg font-black text-slate-800">{detectedCrop}</p>
-                          <p className="text-xs font-bold text-slate-500">Zone {result.zoneId}</p>
+                          <p className="text-xs font-bold text-slate-500">{t("detection.zoneLabel", { zone: result.zoneId })}</p>
                         </div>
                       </div>
                     </div>
                     <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Scanned At</p>
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">{t("detection.scannedAt")}</p>
                       <div className="flex items-center gap-2 mt-1">
                         <Clock className="h-5 w-5 text-green-600" />
                         <p className="text-sm font-black text-slate-800">{new Date(result.timestamp).toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
@@ -388,8 +398,8 @@ export default function DetectionPage() {
 
                   {requiresCropConfirmation && (
                     <Card className="border-amber-200 bg-amber-50 p-4">
-                      <p className="text-sm font-bold text-amber-950">Crop check required</p>
-                      <p className="mt-1 text-sm text-amber-900">You selected {result.scanCrop}, while the model label belongs to {result.modelCrop}. The scan is saved for review, but no spray plan is enabled until the crop is confirmed.</p>
+                      <p className="text-sm font-bold text-amber-950">{t("detection.cropCheckRequired")}</p>
+                      <p className="mt-1 text-sm text-amber-900">{t("detection.cropMismatchNote", { selected: result.scanCrop ?? "—", model: result.modelCrop ?? "—" })}</p>
                     </Card>
                   )}
 
@@ -398,7 +408,7 @@ export default function DetectionPage() {
                   <div className="space-y-6">
                     <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
                       <Beaker className="h-5 w-5 text-green-600" />
-                      IPM Treatment Protocol
+                      {t("detection.ipmProtocol")}
                     </h3>
                     
                     <div className="grid md:grid-cols-2 gap-6">
@@ -407,19 +417,19 @@ export default function DetectionPage() {
                         <div className="p-6 bg-green-50/50 rounded-3xl border border-green-100 h-full">
                           <h4 className="font-bold text-green-800 flex items-center gap-2 mb-3">
                             <Info className="h-4 w-4" />
-                            Disease Insight
+                            {t("detection.diseaseInsight")}
                           </h4>
                           <div className="text-sm text-green-900/70 leading-relaxed italic">
                             {knowledge ? (
                               <div className="space-y-2">
-                                <p><span className="font-bold">Impact:</span> {knowledge.scientificInsights.impact}</p>
-                                <p><span className="font-bold">Transmission:</span> {knowledge.scientificInsights.transmission}</p>
-                                <p><span className="font-bold">Triggers:</span> {knowledge.scientificInsights.environmentalTriggers}</p>
+                                <p><span className="font-bold">{t("detection.impact")}</span> {knowledge.scientificInsights.impact}</p>
+                                <p><span className="font-bold">{t("detection.transmission")}</span> {knowledge.scientificInsights.transmission}</p>
+                                <p><span className="font-bold">{t("detection.triggers")}</span> {knowledge.scientificInsights.environmentalTriggers}</p>
                               </div>
                             ) : (
                               isHealthyResult
-                                ? "No disease pattern was identified in this sample. Continue routine scouting and record the next field observation."
-                                : `The model identified ${detectedCondition} at ${severity?.toLowerCase() || "review"} severity. Confirm visible symptoms and follow the field-response steps before treating.`
+                                ? t("detection.noDiseasePattern")
+                                : t("detection.modelIdentified", { condition: detectedCondition, severity: severityWord })
                             )}
                           </div>
                         </div>
@@ -430,8 +440,8 @@ export default function DetectionPage() {
                         {requiresCropConfirmation ? (
                           <div className="flex h-full flex-col items-center justify-center rounded-[2rem] bg-amber-950 p-6 text-center text-white shadow-xl">
                             <AlertTriangle className="mb-4 h-10 w-10 text-amber-300" />
-                            <p className="font-bold">Crop confirmation required</p>
-                            <p className="mt-1 text-xs text-amber-100">This result is recorded, but Bhoomitra will not issue a chemical plan for a crop-family mismatch.</p>
+                            <p className="font-bold">{t("detection.cropConfirmationRequired")}</p>
+                            <p className="mt-1 text-xs text-amber-100">{t("detection.cropConfirmationNote")}</p>
                           </div>
                         ) : recommendation ? (
                             <div className="p-6 bg-slate-900 text-white rounded-[2rem] shadow-xl relative overflow-hidden h-full">
@@ -440,7 +450,7 @@ export default function DetectionPage() {
                               </div>
                               <h4 className="font-bold text-green-400 flex items-center gap-2 mb-4">
                                 <ShieldCheck className="h-4 w-4" />
-                                {isCulturalResponse ? "Field Response Plan" : "Recommended Treatment"}
+                                {isCulturalResponse ? t("detection.fieldResponsePlan") : t("detection.recommendedTreatment")}
                               </h4>
                               <p className="text-2xl font-black mb-1">{recommendationName}</p>
                               <Badge variant="outline" className="border-green-800 text-green-400 mb-6">{recommendation.category}</Badge>
@@ -448,22 +458,22 @@ export default function DetectionPage() {
                               {isCulturalResponse ? (
                                 <div className="space-y-3 text-sm">
                                   <div className="rounded-xl border border-amber-300/30 bg-amber-100/10 p-3">
-                                    <p className="font-bold text-amber-200">Immediate field response</p>
+                                    <p className="font-bold text-amber-200">{t("detection.immediateFieldResponse")}</p>
                                     <p className="mt-1 text-slate-100">{recommendation.organicAlternative}</p>
                                   </div>
                                   <div>
-                                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400">Why no spray is queued</p>
+                                    <p className="text-xs font-bold uppercase tracking-wide text-slate-400">{t("detection.whyNoSpray")}</p>
                                     <p className="mt-1 text-slate-100">{recommendation.safetyNote}</p>
                                   </div>
                                 </div>
                               ) : (
                                 <div className="grid grid-cols-2 gap-4 text-xs">
                                   <div className="space-y-1">
-                                    <p className="text-slate-400 flex items-center gap-1"><Droplets className="h-3 w-3" /> Label rate</p>
+                                    <p className="text-slate-400 flex items-center gap-1"><Droplets className="h-3 w-3" /> {t("detection.labelRate")}</p>
                                     <p className="font-bold">{recommendation.dosage}</p>
                                   </div>
                                   <div className="space-y-1">
-                                    <p className="text-slate-400 flex items-center gap-1"><Clock className="h-3 w-3" /> Label interval</p>
+                                    <p className="text-slate-400 flex items-center gap-1"><Clock className="h-3 w-3" /> {t("detection.labelInterval")}</p>
                                     <p className="font-bold">{recommendation.sprayInterval}</p>
                                   </div>
                                 </div>
@@ -472,8 +482,8 @@ export default function DetectionPage() {
                         ) : (
                           <div className="p-6 bg-green-900 text-white rounded-[2rem] flex flex-col items-center justify-center text-center h-full">
                             <Leaf className="h-10 w-10 text-green-400 mb-4" />
-                            <p className="font-bold">{isHealthyResult ? "Routine Crop Care" : "Field Verification Required"}</p>
-                            <p className="text-xs text-green-100 opacity-60 mt-1">{isHealthyResult ? "Continue scouting and standard crop care." : "No chemical prescription is shown until the diagnosis is verified."}</p>
+                            <p className="font-bold">{isHealthyResult ? t("detection.routineCropCare") : t("detection.fieldVerificationRequired")}</p>
+                            <p className="text-xs text-green-100 opacity-60 mt-1">{isHealthyResult ? t("detection.routineCropCareNote") : t("detection.noPrescriptionNote")}</p>
                           </div>
                         )}
                       </div>
@@ -482,7 +492,7 @@ export default function DetectionPage() {
 
                   <Card className="bg-amber-50 border-amber-200 rounded-2xl p-5">
                     <p className="text-xs font-bold text-amber-900 leading-relaxed">
-                      {result?.recommendationNotice || TELANGANA_OFFLINE_NOTICE} Manual farmer confirmation is required before any spray command.
+                      {result?.recommendationNotice || TELANGANA_OFFLINE_NOTICE} {t("detection.manualConfirmationNote")}
                     </p>
                   </Card>
 
@@ -496,14 +506,14 @@ export default function DetectionPage() {
                         window.location.assign(path)
                       }}
                     >
-                      {canOpenSprayPlan ? "Open Smart Spray plan" : "Review field response"}
+                      {canOpenSprayPlan ? t("detection.openSprayPlan") : t("detection.reviewFieldResponse")}
                     </Button>
                     <Button
                       variant="outline"
                       className="h-12 border-[#3a7d44] text-[#2e6336] hover:bg-green-50"
                       onClick={() => window.location.assign(`/dashboard/spread-control?zone=${encodeURIComponent(result.zoneId)}&detection=${encodeURIComponent(result.detectionId)}`)}
                     >
-                      Run Spread Control AI
+                      {t("detection.runSpreadControl")}
                     </Button>
                   </div>
 
@@ -512,7 +522,7 @@ export default function DetectionPage() {
                     {knowledge && knowledge.farmerGuidance.immediateActions.length > 0 && (
                       <Card className="bg-amber-50 border-amber-100 rounded-2xl p-5">
                         <h4 className="font-black text-[10px] text-amber-600 uppercase tracking-widest mb-4 flex items-center gap-2">
-                          <Zap className="h-3 w-3" /> Immediate Actions
+                          <Zap className="h-3 w-3" /> {t("detection.immediateActions")}
                         </h4>
                         <ul className="space-y-2">
                           {knowledge.farmerGuidance.immediateActions.map((action, i) => (
@@ -526,7 +536,7 @@ export default function DetectionPage() {
                     )}
                     <Card className="bg-slate-50 border-none rounded-2xl p-5">
                       <h4 className="font-black text-[10px] text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                        <Leaf className="h-3 w-3" /> Organic Alternatives
+                        <Leaf className="h-3 w-3" /> {t("detection.organicAlternatives")}
                       </h4>
                       <ul className="space-y-3">
                         {organicSuggestions.slice(0, 4).map((s, i) => (
@@ -539,7 +549,7 @@ export default function DetectionPage() {
                     </Card>
                     <div className="bg-green-100/50 rounded-2xl p-5 flex flex-col justify-center border border-green-200">
                       <p className="text-xs font-bold text-green-800 leading-relaxed text-center">
-                        Scan automatically logged to History. Comprehensive reports available in the Recommendations dashboard.
+                        {t("detection.loggedToHistory")}
                       </p>
                     </div>
                   </div>
@@ -547,13 +557,13 @@ export default function DetectionPage() {
               </Card>
             </div>
           ) : (
-            <div className="h-full min-h-[500px] flex flex-col items-center justify-center text-center p-12 bg-white rounded-[2.5rem] border-2 border-dashed border-slate-100">
+            <div className="h-full min-h-[220px] md:min-h-[500px] flex flex-col items-center justify-center text-center p-6 md:p-12 bg-white rounded-[2.5rem] border-2 border-dashed border-slate-100">
               <div className="w-24 h-24 bg-slate-50 rounded-full flex items-center justify-center text-slate-200 mb-6">
                 <Brain className="h-12 w-12" />
               </div>
-              <h3 className="text-2xl font-black text-slate-300">Awaiting Sample Data</h3>
+              <h3 className="text-2xl font-black text-slate-300">{t("detection.awaitingSample")}</h3>
               <p className="text-slate-400 mt-3 max-w-sm font-medium">
-                Please upload a leaf image on the left panel to begin the AI automated diagnosis.
+                {t("detection.awaitingSampleNote")}
               </p>
             </div>
           )}

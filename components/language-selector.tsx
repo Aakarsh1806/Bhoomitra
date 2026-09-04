@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useLanguage, type Language } from "@/lib/language-context"
+import { useTranslation } from "@/lib/use-translation"
 import { Globe, Check, ChevronDown } from "lucide-react"
 
 const languages: { code: Language; label: string; native: string }[] = [
@@ -25,6 +26,7 @@ export default function LanguageSelector({
   onChange?: (lang: Language) => void
 }) {
   const { language, setLanguage } = useLanguage()
+  const t = useTranslation()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const current = languages.find((l) => l.code === language) || languages[0]
@@ -48,9 +50,10 @@ export default function LanguageSelector({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
+        aria-label={t("language.label")}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-green-300 hover:bg-green-50/60"
+        className="flex min-h-[44px] items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-base font-medium text-slate-700 shadow-sm transition-colors hover:border-green-300 hover:bg-green-50/60 md:min-h-0 md:text-sm"
       >
         <Globe className="h-4 w-4 text-green-600" />
         <span>{current.native}</span>

@@ -78,10 +78,10 @@ export default function HardwareSafetyPanel() {
               <ShieldAlert className="h-5 w-5 text-red-600" />
               {t("hardware.killSwitch")}
             </CardTitle>
-            <CardDescription>Emergency stop</CardDescription>
+            <CardDescription>{t("hardware.emergencyStop")}</CardDescription>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <span className="text-xs text-muted-foreground">OFF</span>
+            <span className="text-xs text-muted-foreground">{t("hardware.off")}</span>
             <Button
               type="button"
               size="sm"
@@ -92,7 +92,7 @@ export default function HardwareSafetyPanel() {
             >
               {hardwareState.killSwitchEngaged ? t("hardware.engaged") : t("hardware.enable")}
             </Button>
-            <span className="text-xs text-muted-foreground">ON</span>
+            <span className="text-xs text-muted-foreground">{t("hardware.on")}</span>
           </div>
         </div>
       </CardHeader>

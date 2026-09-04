@@ -42,12 +42,17 @@ int SOIL_WET = 1200;
 // One physical nozzle rig is aimed at a zone by rotating the servo.
 struct ZoneAngle { const char* zone; int angle; };
 ZoneAngle zoneAngles[] = {
-  { "A1", 0 },
-  { "A2", 45 },
-  { "A3", 90 },
-  { "A4", 135 },
+  { "A1", 45 },
+  { "A2", 90 },
+  { "A3", 135 },
+  { "A4", 175 },
 };
 const int NUM_ZONES = sizeof(zoneAngles) / sizeof(zoneAngles[0]);
+
+// Parked position the servo returns to once a pulse finishes (and where it
+// starts up). Kept separate from zoneAngles so it isn't accidentally treated
+// as a waterable zone.
+const int HOME_ANGLE = 135;
 
 // ---- Pulse timing ----
 const unsigned long PULSE_DURATION_MS = 3000; // one "water"/"spray" command = one 3s pulse
@@ -92,6 +97,7 @@ void startPulse(const String &zone) {
 
 void stopPulse(const char* feedback) {
   relayOff();
+  nozzleServo.write(HOME_ANGLE);
   pulseActive = false;
   pendingStatusReport = true;
   pendingStatus = "closed";
@@ -186,8 +192,7 @@ void setup() {
 
   nozzleServo.setPeriodHertz(50);
   nozzleServo.attach(SERVO_PIN, 500, 2400);
-  nozzleServo.write(160); // parked position, distinct from every zone angle so the
-                           // first pulse always produces a visible, testable rotation
+  nozzleServo.write(HOME_ANGLE); // starts parked at home, same as after every completed pulse
 
   Serial.println("BHOOMITRA_ESP32_READY");
 }

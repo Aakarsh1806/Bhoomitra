@@ -6,6 +6,8 @@ import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { useTranslation } from "@/lib/use-translation"
 import { useNavigation } from "@/lib/navigation-context"
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet"
+import LanguageSelector from "@/components/language-selector"
 import {
     Home,
     SprayCan,
@@ -22,6 +24,7 @@ import {
     PanelLeftClose,
     PanelLeftOpen,
     Bug,
+    Menu,
 } from "lucide-react"
 
 type NavItem = {
@@ -37,6 +40,7 @@ type NavGroup = {
 }
 
 const SIDEBAR_NAV_ID = "dashboard-sidebar-nav"
+const MOBILE_NAV_ID = "dashboard-mobile-nav"
 
 export default function DashboardLayout({
     children,
@@ -52,6 +56,9 @@ export default function DashboardLayout({
     // Explicit, click-driven expand/collapse — no hover-triggered state.
     const [collapsed, setCollapsed] = useState(false)
     const expanded = !collapsed
+    // Mobile drawer (below 768px only). Radix Sheet handles Escape, backdrop
+    // dismissal, focus trapping/restore and background scroll locking.
+    const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
     // Resolve the live account (role + block status). If the account was
     // blocked/removed while the session was open, bounce back to login.
@@ -63,7 +70,7 @@ export default function DashboardLayout({
                 if (!active) return
                 if (!res.ok || !data?.success) {
                     if (data?.blocked) {
-                        toast.error(data.message || "Your access has been revoked.")
+                        toast.error(data.message || t("nav.accessRevoked"))
                     }
                     router.replace("/login")
                     return
@@ -81,35 +88,35 @@ export default function DashboardLayout({
 
     const navGroups: NavGroup[] = [
         {
-            label: "Overview",
+            label: t("nav.group.overview"),
             items: [
                 { name: t("nav.dashboard"), href: "/dashboard", icon: Home },
             ],
         },
         {
-            label: "Field Operations",
+            label: t("nav.group.fieldOperations"),
             items: [
                 { name: t("nav.detection"), href: "/dashboard/detection", icon: Microscope },
                 { name: t("nav.autospray"), href: "/dashboard/autospray", icon: SprayCan },
                 { name: t("nav.map"), href: "/dashboard/map", icon: Map },
                 { name: t("nav.pests"), href: "/dashboard/pests", icon: Bug },
-                { name: "Spread Control", href: "/dashboard/spread-control", icon: Radar },
+                { name: t("nav.spreadControl"), href: "/dashboard/spread-control", icon: Radar },
             ],
         },
         {
-            label: "Insights",
+            label: t("nav.group.insights"),
             items: [
                 { name: t("nav.analytics"), href: "/dashboard/analytics", icon: BarChart3 },
                 { name: t("nav.recommendations"), href: "/dashboard/recommendations", icon: Brain },
-                { name: "Activity", href: "/dashboard/history", icon: History },
+                { name: t("nav.activity"), href: "/dashboard/history", icon: History },
             ],
         },
         {
-            label: "Account",
+            label: t("nav.group.account"),
             items: [
-                { name: "User Management", href: "/dashboard/users", icon: Users, adminOnly: true },
-                { name: "About", href: "/dashboard/about", icon: Info },
-                { name: "My Account", href: "/dashboard/account", icon: UserCircle },
+                { name: t("nav.users"), href: "/dashboard/users", icon: Users, adminOnly: true },
+                { name: t("nav.about"), href: "/dashboard/about", icon: Info },
+                { name: t("nav.account"), href: "/dashboard/account", icon: UserCircle },
             ],
         },
     ]
@@ -129,20 +136,102 @@ export default function DashboardLayout({
     const handleLogout = async () => {
         try {
             await fetch("/api/auth/logout", { method: "POST" })
-            toast.success("Logged out successfully")
+            toast.success(t("nav.logoutSuccess"))
             router.push("/login")
             router.refresh()
         } catch (error) {
-            toast.error("Logout failed")
+            toast.error(t("nav.logoutFailed"))
         }
     }
 
     return (
         <div className="flex min-h-screen bg-gradient-to-br from-[#f4fbf6] via-[#eef9f2] to-[#e6f6ec]">
 
+            {/* ===== MOBILE HEADER + DRAWER (below 768px only) ===== */}
+            <header className="fixed inset-x-0 top-0 z-50 flex h-14 items-center gap-2 border-b border-emerald-100/80 bg-white/95 px-3 backdrop-blur md:hidden">
+                <button
+                    type="button"
+                    onClick={() => setMobileNavOpen(true)}
+                    aria-label={t("nav.openMenu")}
+                    aria-haspopup="dialog"
+                    aria-expanded={mobileNavOpen}
+                    aria-controls={MOBILE_NAV_ID}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-[#2c4633] transition hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-strong/60"
+                >
+                    <Menu size={22} />
+                </button>
+                <div className="flex min-w-0 flex-1 items-center gap-2">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-brand-strong text-[11px] font-black text-white">
+                        BT
+                    </div>
+                    <span className="truncate text-base font-black tracking-tight text-[#14231a]">Bhoomitra</span>
+                </div>
+                <LanguageSelector align="right" />
+            </header>
+
+            <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+                <SheetContent
+                    id={MOBILE_NAV_ID}
+                    side="left"
+                    className="w-[85vw] max-w-[20rem] gap-0 bg-white p-0 pb-[env(safe-area-inset-bottom)] md:hidden"
+                >
+                    <div className="flex h-14 shrink-0 items-center gap-2 border-b border-emerald-50 px-4">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-brand-strong text-[11px] font-black text-white">
+                            BT
+                        </div>
+                        <SheetTitle className="text-base font-black tracking-tight text-[#14231a]">Bhoomitra</SheetTitle>
+                    </div>
+
+                    <nav className="min-h-0 flex-1 overflow-y-auto px-3 py-3" aria-label={t("nav.menuTitle")}>
+                        {visibleGroups.map((group, groupIndex) => (
+                            <div key={group.label} className={groupIndex > 0 ? "mt-5" : ""}>
+                                <p className="px-3.5 pb-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-[#8aa696]">{group.label}</p>
+                                <div className="space-y-1.5">
+                                    {group.items.map((item) => {
+                                        const Icon = item.icon
+                                        const isActive = pathname === item.href
+                                        return (
+                                            <Link
+                                                key={item.href}
+                                                href={item.href}
+                                                prefetch
+                                                onClick={() => {
+                                                    if (pathname !== item.href) setIsLoading(true)
+                                                    setMobileNavOpen(false)
+                                                }}
+                                                className={`flex min-h-[44px] items-center gap-4 rounded-2xl px-3.5 py-3 text-base transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-strong/60 ${isActive
+                                                    ? "bg-brand-strong text-white"
+                                                    : "text-[#2c4633] hover:bg-emerald-50"
+                                                    }`}
+                                            >
+                                                <Icon size={22} className="shrink-0" />
+                                                <span className="font-bold">{item.name}</span>
+                                            </Link>
+                                        )
+                                    })}
+                                </div>
+                            </div>
+                        ))}
+                    </nav>
+
+                    <div className="shrink-0 border-t border-emerald-50 px-3 py-3">
+                        <button
+                            onClick={() => {
+                                setMobileNavOpen(false)
+                                handleLogout()
+                            }}
+                            className="flex min-h-[44px] w-full items-center gap-4 rounded-2xl px-3.5 py-3 text-base font-bold text-red-600 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+                        >
+                            <LogOut size={22} className="shrink-0" />
+                            <span>{t("nav.logout")}</span>
+                        </button>
+                    </div>
+                </SheetContent>
+            </Sheet>
+
             {/* ===== SIDEBAR ===== */}
             <aside
-                className={`fixed left-0 top-0 z-50 flex h-screen flex-col overflow-hidden border-r border-emerald-100/80 bg-white/95 shadow-[8px_0_40px_-24px_rgba(16,185,129,0.5)] backdrop-blur transition-[width] duration-300 ease-out ${expanded ? "w-72" : "w-20"}`}
+                className={`fixed left-0 top-0 z-50 hidden h-screen flex-col overflow-hidden md:flex border-r border-emerald-100/80 bg-white/95 shadow-[8px_0_40px_-24px_rgba(16,185,129,0.5)] backdrop-blur transition-[width] duration-300 ease-out ${expanded ? "w-72" : "w-20"}`}
             >
                 {/* Brand + explicit collapse control */}
                 <div className="flex h-20 shrink-0 items-center gap-2 px-5">
@@ -162,8 +251,8 @@ export default function DashboardLayout({
                         onClick={() => setCollapsed((value) => !value)}
                         aria-expanded={expanded}
                         aria-controls={SIDEBAR_NAV_ID}
-                        aria-label={expanded ? "Collapse sidebar" : "Expand sidebar"}
-                        title={expanded ? "Collapse sidebar" : "Expand sidebar"}
+                        aria-label={expanded ? t("nav.collapseSidebar") : t("nav.expandSidebar")}
+                        title={expanded ? t("nav.collapseSidebar") : t("nav.expandSidebar")}
                         className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#2c4633] transition hover:bg-emerald-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-strong/60"
                     >
                         {expanded ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
@@ -223,7 +312,7 @@ export default function DashboardLayout({
             {/* ===== MAIN CONTENT =====
                 Margin tracks the sidebar's actual current width so content is
                 never covered, whether the sidebar is collapsed or expanded. */}
-            <main className={`min-h-screen flex-1 transition-[margin-left] duration-300 ease-out ${expanded ? "ml-72" : "ml-20"}`}>
+            <main className={`min-h-screen flex-1 pt-14 transition-[margin-left] duration-300 ease-out md:pt-0 ${expanded ? "md:ml-72" : "md:ml-20"}`}>
                 <div className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6 sm:py-8 md:px-10 md:py-10">
                     {children}
                 </div>

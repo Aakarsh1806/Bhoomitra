@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useCallback, useEffect, useState } from "react"
 import WeatherStrip from "@/components/weather-strip"
+import { useTranslation, usePluralTranslation } from "@/lib/use-translation"
 import SprayWindowTimeline from "@/components/spray-window-timeline"
 import {
   AlertTriangle,
@@ -49,6 +50,8 @@ type Water = { calibrated: boolean; targetedVsBroadcast: { savedLitres: number; 
 const PILOT_ZONE_IDS = ["A1", "A2", "A3", "A4"]
 
 export default function DashboardHome() {
+  const t = useTranslation()
+  const tPlural = usePluralTranslation()
   const [zones, setZones] = useState<ZoneSnapshot[]>([])
   const [activity, setActivity] = useState<ActivityItem[]>([])
   const [controller, setController] = useState<ControllerSnapshot>({})
@@ -168,11 +171,11 @@ export default function DashboardHome() {
         <section className="rounded-2xl border border-slate-100 bg-white p-6 elevated">
           <div className="flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-base font-black text-slate-800">
-              <MapPin className="h-4.5 w-4.5 text-brand-strong" /> Field at a Glance
+              <MapPin className="h-4.5 w-4.5 text-brand-strong" /> {t("dashboard.fieldAtAGlance")}
             </h2>
-            <Link href="/dashboard/map" className="text-xs font-black text-brand-strong hover:underline">Open map →</Link>
+            <Link href="/dashboard/map" className="text-xs font-black text-brand-strong hover:underline">{t("dashboard.openMap")}</Link>
           </div>
-          <p className="mt-1 text-xs text-slate-500">12 zones · coloured by soil moisture · A1–A4 pump pilot.</p>
+          <p className="mt-1 text-xs text-slate-500">{t("dashboard.fieldGlanceSubtitle")}</p>
           <div className="mt-4 grid grid-cols-6 gap-2">
             {(zones.length ? zones : Array.from({ length: 12 })).map((zone: any, index) => {
               const moisture = zone ? Number(zone.soilMoisture) : null
@@ -187,14 +190,14 @@ export default function DashboardHome() {
             })}
           </div>
           <div className="mt-3 flex flex-wrap gap-2.5 text-[11px] text-slate-500">
-            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-400" /> Good moisture</span>
-            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-300" /> Below target</span>
-            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-red-400" /> Low moisture</span>
-            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full ring-2 ring-brand-strong/60" /> Pump pilot</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-emerald-400" /> {t("dashboard.goodMoisture")}</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-amber-300" /> {t("dashboard.belowTarget")}</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-red-400" /> {t("dashboard.lowMoisture")}</span>
+            <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full ring-2 ring-brand-strong/60" /> {t("dashboard.pumpPilot")}</span>
           </div>
           {(controller?.queuedCommandCount || 0) > 0 && (
             <p className="mt-3 rounded-lg bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
-              {controller.queuedCommandCount} pump command{controller.queuedCommandCount === 1 ? "" : "s"} in the queue — awaiting controller feedback.
+              {tPlural("dashboard.pumpCommandsQueued", controller.queuedCommandCount || 0)}
             </p>
           )}
         </section>
@@ -208,12 +211,12 @@ export default function DashboardHome() {
             </div>
             <div>
               <h2 className={`text-lg font-black leading-tight md:text-xl ${hasActiveDetections ? "text-amber-800" : "text-emerald-700"}`}>
-                Active Detections
+                {t("dashboard.activeDetections")}
               </h2>
               <p className="text-xs text-slate-600">
                 {hasActiveDetections
-                  ? `${activeDetectionItems.length} zone${activeDetectionItems.length === 1 ? "" : "s"} need${activeDetectionItems.length === 1 ? "s" : ""} your attention.`
-                  : "No active disease detections. Your farm is healthy today."}
+                  ? tPlural("dashboard.zonesNeedAttention", activeDetectionItems.length)
+                  : t("dashboard.noActiveDetections")}
               </p>
             </div>
           </div>

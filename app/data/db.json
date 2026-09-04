@@ -122,7 +122,7 @@
       "organicAlternative": "Prune for airflow and remove mummified berries.",
       "dosage": "Use only at the dose on the locally registered product label",
       "timestamp": "2026-07-21T04:55:40.560Z",
-      "status": "active",
+      "status": "resolved",
       "treatedAt": null,
       "postSeverityScore": null,
       "linkedSprayId": null,
@@ -263,6 +263,94 @@
       "cropMatch": "matched",
       "modelId": "plant_disease_mobilenet_v2",
       "modelVersion": "1.0.0"
+    },
+    {
+      "id": "dbce487d-8ad1-4ef0-a111-e9f7e3d0352f",
+      "zoneId": "A1",
+      "disease": "Target Spot",
+      "canonicalDisease": "Target_Spot",
+      "confidence": 0.8870601058006287,
+      "severityLevel": "high",
+      "severityScore": 3,
+      "recommendedChemical": "Crop confirmation required",
+      "organicAlternative": "Remove infected leaves, improve airflow and avoid overhead irrigation.",
+      "dosage": "Do not prepare a spray until the scan crop is confirmed",
+      "timestamp": "2026-08-22T06:00:31.112Z",
+      "status": "resolved",
+      "treatedAt": null,
+      "postSeverityScore": null,
+      "linkedSprayId": null,
+      "scanCrop": "Grape",
+      "modelCrop": "Tomato",
+      "cropMatch": "review",
+      "modelId": "plant_disease_mobilenet_v2",
+      "modelVersion": "1.0.0"
+    },
+    {
+      "id": "27db86ee-23ed-4336-92f0-a910dc37f5b5",
+      "zoneId": "A1",
+      "disease": "Early Blight",
+      "canonicalDisease": "Early_blight",
+      "confidence": 0.856829047203064,
+      "severityLevel": "high",
+      "severityScore": 3,
+      "recommendedChemical": "Chlorothalonil or another crop-registered protectant Extension-guided formulation",
+      "organicAlternative": "Remove infected leaves and avoid overhead irrigation.",
+      "dosage": "Use only at the dose on the locally registered product label",
+      "timestamp": "2026-08-22T06:01:23.583Z",
+      "status": "active",
+      "treatedAt": null,
+      "postSeverityScore": null,
+      "linkedSprayId": null,
+      "scanCrop": "Tomato",
+      "modelCrop": "Tomato",
+      "cropMatch": "matched",
+      "modelId": "plant_disease_mobilenet_v2",
+      "modelVersion": "1.0.0"
+    },
+    {
+      "id": "602303f9-d129-40c5-8f67-b66ec6d2b4a1",
+      "zoneId": "A1",
+      "disease": "Early Blight",
+      "canonicalDisease": "Early_blight",
+      "confidence": 0.8547946214675903,
+      "severityLevel": "high",
+      "severityScore": 3,
+      "recommendedChemical": "Crop confirmation required",
+      "organicAlternative": "Remove infected foliage and avoid overhead irrigation.",
+      "dosage": "Do not prepare a spray until the scan crop is confirmed",
+      "timestamp": "2026-08-29T15:02:25.187Z",
+      "status": "active",
+      "treatedAt": null,
+      "postSeverityScore": null,
+      "linkedSprayId": null,
+      "scanCrop": "Grape",
+      "modelCrop": "Tomato",
+      "cropMatch": "review",
+      "modelId": "plant_disease_mobilenet_v2",
+      "modelVersion": "1.0.0"
+    },
+    {
+      "id": "8e4bab07-76b7-4750-ae79-47c44f20d2fd",
+      "zoneId": "A1",
+      "disease": "Spider Mites",
+      "canonicalDisease": "Spider_mites Two-spotted_spider_mite",
+      "confidence": 0.8218703269958496,
+      "severityLevel": "high",
+      "severityScore": 3,
+      "recommendedChemical": "Crop confirmation required",
+      "organicAlternative": "Wash leaf undersides with water, remove heavily infested leaves and conserve natural predators.",
+      "dosage": "Do not prepare a spray until the scan crop is confirmed",
+      "timestamp": "2026-09-04T04:58:09.526Z",
+      "status": "active",
+      "treatedAt": null,
+      "postSeverityScore": null,
+      "linkedSprayId": null,
+      "scanCrop": "Grape",
+      "modelCrop": "Tomato",
+      "cropMatch": "review",
+      "modelId": "plant_disease_mobilenet_v2",
+      "modelVersion": "1.0.0"
     }
   ],
   "sprays": [
@@ -292,6 +380,184 @@
   ],
   "zoneHistory": [],
   "activityLog": [
+    {
+      "type": "water",
+      "zoneId": "A4",
+      "timestamp": "2026-09-02T08:21:21.834Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A3",
+      "timestamp": "2026-09-02T08:13:46.874Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A4",
+      "timestamp": "2026-09-02T08:12:25.670Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A2",
+      "timestamp": "2026-09-02T08:12:19.349Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A4",
+      "timestamp": "2026-09-02T08:05:20.542Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A3",
+      "timestamp": "2026-09-02T08:05:17.611Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A4",
+      "timestamp": "2026-09-02T07:56:26.303Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A4",
+      "timestamp": "2026-09-02T07:40:11.284Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A3",
+      "timestamp": "2026-09-02T07:40:08.286Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A4",
+      "timestamp": "2026-09-02T07:39:53.292Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A4",
+      "timestamp": "2026-09-02T07:39:50.298Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A4",
+      "timestamp": "2026-09-02T07:39:47.292Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A3",
+      "timestamp": "2026-09-02T07:39:38.303Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A3",
+      "timestamp": "2026-09-02T07:39:35.052Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A2",
+      "timestamp": "2026-09-02T07:39:32.052Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A4",
+      "timestamp": "2026-09-02T07:19:52.594Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A3",
+      "timestamp": "2026-09-02T07:19:49.604Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A4",
+      "timestamp": "2026-09-02T07:19:34.598Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A3",
+      "timestamp": "2026-09-02T07:14:29.472Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A4",
+      "timestamp": "2026-09-02T07:11:54.311Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A3",
+      "timestamp": "2026-09-02T07:11:51.314Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A4",
+      "timestamp": "2026-09-02T07:11:33.310Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A4",
+      "timestamp": "2026-09-02T07:04:58.320Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A3",
+      "timestamp": "2026-09-02T07:04:55.092Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A4",
+      "timestamp": "2026-09-02T07:02:01.083Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A3",
+      "timestamp": "2026-09-02T07:01:58.084Z"
+    },
+    {
+      "type": "alert",
+      "zoneId": "A1",
+      "timestamp": "2026-09-02T06:59:45.650Z",
+      "source": "pest-classification",
+      "pestId": "whitefly"
+    },
+    {
+      "type": "water",
+      "zoneId": "A4",
+      "timestamp": "2026-09-02T05:50:24.806Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A3",
+      "timestamp": "2026-09-02T05:50:15.828Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A4",
+      "timestamp": "2026-09-02T05:47:12.746Z"
+    },
+    {
+      "type": "water",
+      "zoneId": "A3",
+      "timestamp": "2026-09-02T05:47:09.720Z"
+    },
+    {
+      "type": "alert",
+      "zoneId": "A1",
+      "timestamp": "2026-09-02T05:14:26.985Z",
+      "source": "pest-classification",
+      "pestId": "cutworm"
+    },
+    {
+      "type": "alert",
+      "zoneId": "A1",
+      "timestamp": "2026-09-02T05:13:53.881Z",
+      "source": "pest-classification",
+      "pestId": "whitefly"
+    },
+    {
+      "type": "alert",
+      "zoneId": "A1",
+      "timestamp": "2026-09-02T05:12:56.025Z",
+      "source": "pest-classification",
+      "pestId": "whitefly"
+    },
     {
       "type": "water",
       "zoneId": "B3",
@@ -381,6 +647,884 @@
       "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
       "status": "queued",
       "timestamp": "2026-08-21T08:26:59.831Z"
+    },
+    {
+      "id": "824bb3ce-a2d9-4c26-a5cb-c3f5eb7755f6",
+      "farmId": "default-farm",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T05:41:31.935Z"
+    },
+    {
+      "id": "c78f7797-2e8b-49ad-b37d-249122920c04",
+      "farmId": "default-farm",
+      "zoneId": "A1",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T05:47:05.041Z"
+    },
+    {
+      "id": "854a0aec-216f-4911-b88f-051258b13a71",
+      "farmId": "default-farm",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T05:47:05.554Z"
+    },
+    {
+      "id": "827f8b87-30d3-4237-b1ba-8b9e6b2f4366",
+      "farmId": "default-farm",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T05:47:06.237Z"
+    },
+    {
+      "id": "3e7c445b-251c-473c-8c3d-8fdcdea75e2d",
+      "farmId": "guest_x9su4",
+      "zoneId": "A1",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 6,
+      "pulseSeconds": 3,
+      "estimatedLitres": 9,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T05:50:07.599Z"
+    },
+    {
+      "id": "1bac2089-6ed7-4345-b484-f5f0e9e1a3af",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T05:50:07.602Z"
+    },
+    {
+      "id": "36081307-ad97-4567-acda-07d95aa2234a",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T05:50:07.605Z"
+    },
+    {
+      "id": "aa4f0817-784f-4834-975c-3ecea0f32d33",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T05:50:07.608Z"
+    },
+    {
+      "id": "a2e0ba66-4aa3-4c77-8d56-12871337a2cd",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:01:51.895Z"
+    },
+    {
+      "id": "f456b495-c28e-41c1-bd26-fdd965d7f81f",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:01:51.899Z"
+    },
+    {
+      "id": "6c3ab77e-dce5-4037-862d-e16264160135",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:01:51.902Z"
+    },
+    {
+      "id": "ac73e017-f381-4fc8-89c8-aa388d5f8708",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:04:49.765Z"
+    },
+    {
+      "id": "7e03e111-34ee-4019-bcd6-449fec4225da",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:04:49.769Z"
+    },
+    {
+      "id": "ea08b7f9-1ec5-4e68-85cf-a0bb7cb246a1",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:04:49.772Z"
+    },
+    {
+      "id": "34623185-4350-435f-87d8-22bd6d529aae",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:11:06.047Z"
+    },
+    {
+      "id": "dc582526-419e-4a94-88aa-07781d918924",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:11:06.052Z"
+    },
+    {
+      "id": "23d5a9fc-6875-4cc6-a223-8f710058fd8a",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:11:06.056Z"
+    },
+    {
+      "id": "29fc3d50-5503-45dc-b1ca-a5ca5096ef31",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:11:45.853Z"
+    },
+    {
+      "id": "ceb77ec1-a8d3-4d9d-bcda-40fc17b68d2f",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:11:45.864Z"
+    },
+    {
+      "id": "de2fd364-360b-4a83-88fd-fa306b675f29",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:11:45.871Z"
+    },
+    {
+      "id": "6fea40d0-6b73-4928-b46f-b8baa4accbe0",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:14:24.398Z"
+    },
+    {
+      "id": "068b7723-d806-4f43-ad9c-b96a0de71b69",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:14:24.401Z"
+    },
+    {
+      "id": "0b02caa5-c9bc-4859-93e0-0a9b3b665281",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:14:24.405Z"
+    },
+    {
+      "id": "fdc5c0be-8703-4a62-977e-4de39681b9e4",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:18:31.216Z"
+    },
+    {
+      "id": "65beac28-c4ae-4917-af9c-07c8b003b8d2",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:18:31.222Z"
+    },
+    {
+      "id": "795b1599-85e4-4f77-b5a5-58c8b684c170",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:18:31.227Z"
+    },
+    {
+      "id": "2a0557bb-7344-465f-bca4-16e42b0aee43",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:19:44.175Z"
+    },
+    {
+      "id": "ec8cf36c-cd24-42c6-82db-35c9226893ae",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:19:44.179Z"
+    },
+    {
+      "id": "bd8df922-4170-4ff3-ade9-d44f73c3bd5b",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:19:44.188Z"
+    },
+    {
+      "id": "041c3376-160b-4f6c-b779-b3321a1857fb",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:34:47.868Z"
+    },
+    {
+      "id": "fd21957f-83aa-46c4-ae32-fd591de4be21",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:34:47.873Z"
+    },
+    {
+      "id": "d838215e-62e8-4723-a29b-bfe7f223fbba",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:34:47.876Z"
+    },
+    {
+      "id": "166cbe9b-7715-4029-a6bb-e01000d5f3de",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:38:01.404Z"
+    },
+    {
+      "id": "e6cc5d95-3a8e-4376-946f-0f585a32b809",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:38:01.407Z"
+    },
+    {
+      "id": "8d1ee837-521d-4af3-bead-220ebdf30658",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:38:01.411Z"
+    },
+    {
+      "id": "b1f31548-83ad-44c4-aeb4-3c864036122d",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:38:20.313Z"
+    },
+    {
+      "id": "76d62b42-7acd-430d-8572-6b747c90dc9d",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:38:20.319Z"
+    },
+    {
+      "id": "0ce982d4-5a7d-4ecf-b0a9-f7667af88f60",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:38:20.325Z"
+    },
+    {
+      "id": "bd2054dd-ffda-4f1d-9711-c67e25cb7364",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:40:02.870Z"
+    },
+    {
+      "id": "8591394a-b64f-4dd4-ac9e-79cdc8090834",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:40:02.877Z"
+    },
+    {
+      "id": "6625444d-5c0e-40de-bd11-89c3b8b721c7",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:40:02.882Z"
+    },
+    {
+      "id": "6699fe79-3ec7-4ead-9180-d96ff89a3923",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:56:18.280Z"
+    },
+    {
+      "id": "c071ae4b-c19c-4dd2-9dec-cd452feceefd",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:56:18.284Z"
+    },
+    {
+      "id": "678272ae-53f2-404c-b7cb-140d786bb1f2",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T07:56:18.288Z"
+    },
+    {
+      "id": "9e0c914a-958f-4cb7-b7f5-a045bc369c59",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T08:05:10.099Z"
+    },
+    {
+      "id": "1f5caa5d-c315-4788-81e0-51d9c68b345f",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T08:05:10.143Z"
+    },
+    {
+      "id": "3cf729da-4c03-4296-96ee-e8100e6afb2b",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T08:05:10.178Z"
+    },
+    {
+      "id": "0acd0088-934f-4596-bc9d-c3ba2567c626",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T08:12:13.857Z"
+    },
+    {
+      "id": "36a5e2a9-7708-4ad3-b0b8-057c3b5d1e0e",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T08:12:13.863Z"
+    },
+    {
+      "id": "51b35ccb-dbe0-46b5-b9ee-680b2603712a",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T08:12:13.868Z"
+    },
+    {
+      "id": "d1660ae7-21a1-4365-9db7-91e3c5013cb7",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T08:13:40.554Z"
+    },
+    {
+      "id": "7d14bd9a-56a7-4141-9ac5-5db41732104e",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T08:13:40.559Z"
+    },
+    {
+      "id": "2104bc55-668f-472c-b28d-4bbdebf87ca4",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T08:13:40.565Z"
+    },
+    {
+      "id": "b2688edf-5c72-4d35-8311-3a8005d55cce",
+      "farmId": "guest_x9su4",
+      "zoneId": "A2",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 1,
+      "pulseSeconds": 3,
+      "estimatedLitres": 1.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T08:21:12.192Z"
+    },
+    {
+      "id": "659d70a7-9ef7-4cf6-ba35-e00efc0ab71a",
+      "farmId": "guest_x9su4",
+      "zoneId": "A4",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T08:21:12.197Z"
+    },
+    {
+      "id": "fe4d2e51-65c5-46f7-9ed9-d2ebebc0e73a",
+      "farmId": "guest_x9su4",
+      "zoneId": "A3",
+      "kind": "irrigation",
+      "mode": "irrigation",
+      "pulses": 3,
+      "pulseSeconds": 3,
+      "estimatedLitres": 4.5,
+      "volumeSource": "Estimated (conservative) — from standard 0.5 HP monoblock (conservative operating flow) rated flow, not metered",
+      "status": "queued",
+      "timestamp": "2026-09-02T08:21:12.204Z"
+    }
+  ],
+  "pestDetections": [
+    {
+      "zoneId": "A1",
+      "crop": "Grape",
+      "pestId": "whitefly",
+      "pestName": "Whitefly",
+      "scientificName": "Aleyrodidae",
+      "confidence": 0.6827080845832825,
+      "confidenceBand": "medium",
+      "cropMatch": "review",
+      "predictions": [
+        {
+          "label": "Whitefly",
+          "pestId": "whitefly",
+          "confidence": 0.6827080845832825
+        },
+        {
+          "label": "Cicadellidae",
+          "pestId": "cicadellidae",
+          "confidence": 0.16121558845043182
+        },
+        {
+          "label": "Weevil",
+          "pestId": "weevil",
+          "confidence": 0.01805812679231167
+        }
+      ],
+      "imageName": "white fly.webp",
+      "modelId": "bhoomitra_pest_classifier_v1",
+      "modelVersion": "1.0.0",
+      "farmerConfirmed": false,
+      "id": "f9099256-fbd4-4cbd-877c-41d0db7e8c4f",
+      "timestamp": "2026-09-02T05:12:56.025Z",
+      "status": "monitoring",
+      "followUpDue": "2026-09-03T05:12:56.025Z",
+      "outcomeNote": null,
+      "updatedAt": "2026-09-02T05:12:56.025Z"
+    },
+    {
+      "zoneId": "A1",
+      "crop": "Grape",
+      "pestId": "whitefly",
+      "pestName": "Whitefly",
+      "scientificName": "Aleyrodidae",
+      "confidence": 0.6827080845832825,
+      "confidenceBand": "medium",
+      "cropMatch": "review",
+      "predictions": [
+        {
+          "label": "Whitefly",
+          "pestId": "whitefly",
+          "confidence": 0.6827080845832825
+        },
+        {
+          "label": "Cicadellidae",
+          "pestId": "cicadellidae",
+          "confidence": 0.16121558845043182
+        },
+        {
+          "label": "Weevil",
+          "pestId": "weevil",
+          "confidence": 0.01805812679231167
+        }
+      ],
+      "imageName": "white fly.webp",
+      "modelId": "bhoomitra_pest_classifier_v1",
+      "modelVersion": "1.0.0",
+      "farmerConfirmed": false,
+      "id": "a8453c53-fb09-4516-ba1c-0def76aeb090",
+      "timestamp": "2026-09-02T05:13:53.881Z",
+      "status": "monitoring",
+      "followUpDue": "2026-09-03T05:13:53.881Z",
+      "outcomeNote": null,
+      "updatedAt": "2026-09-02T05:13:53.881Z"
+    },
+    {
+      "zoneId": "A1",
+      "crop": "Grape",
+      "pestId": "cutworm",
+      "pestName": "Cutworm",
+      "scientificName": "Noctuidae cutworm complex",
+      "confidence": 0.868212103843689,
+      "confidenceBand": "high",
+      "cropMatch": "review",
+      "predictions": [
+        {
+          "label": "Cutworm",
+          "pestId": "cutworm",
+          "confidence": 0.868212103843689
+        },
+        {
+          "label": "Mediterranean fruit fly",
+          "pestId": "mediterranean_fruit_fly",
+          "confidence": 0.012805011123418808
+        },
+        {
+          "label": "Aphids",
+          "pestId": "aphids",
+          "confidence": 0.01280394196510315
+        }
+      ],
+      "imageName": "cut worm.jpg",
+      "modelId": "bhoomitra_pest_classifier_v1",
+      "modelVersion": "1.0.0",
+      "farmerConfirmed": false,
+      "id": "8926f768-6219-4069-91a9-8eb862dcb625",
+      "timestamp": "2026-09-02T05:14:26.985Z",
+      "status": "monitoring",
+      "followUpDue": "2026-09-03T05:14:26.985Z",
+      "outcomeNote": null,
+      "updatedAt": "2026-09-02T05:14:26.985Z"
+    },
+    {
+      "zoneId": "A1",
+      "crop": "Grape",
+      "pestId": "whitefly",
+      "pestName": "Whitefly",
+      "scientificName": "Aleyrodidae",
+      "confidence": 0.6827080845832825,
+      "confidenceBand": "medium",
+      "cropMatch": "review",
+      "predictions": [
+        {
+          "label": "Whitefly",
+          "pestId": "whitefly",
+          "confidence": 0.6827080845832825
+        },
+        {
+          "label": "Cicadellidae",
+          "pestId": "cicadellidae",
+          "confidence": 0.16121558845043182
+        },
+        {
+          "label": "Weevil",
+          "pestId": "weevil",
+          "confidence": 0.01805812679231167
+        }
+      ],
+      "imageName": "white fly.webp",
+      "modelId": "bhoomitra_pest_classifier_v1",
+      "modelVersion": "1.0.0",
+      "farmerConfirmed": false,
+      "id": "7d45e6bf-30c6-43c5-8a26-e32dc8ee3336",
+      "timestamp": "2026-09-02T06:59:45.650Z",
+      "status": "monitoring",
+      "followUpDue": "2026-09-03T06:59:45.650Z",
+      "outcomeNote": null,
+      "updatedAt": "2026-09-02T06:59:45.650Z"
     }
   ]
 }

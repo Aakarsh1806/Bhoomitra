@@ -9,16 +9,27 @@ interface LanguageContextType {
   setLanguage: (lang: Language) => void
 }
 
+export const SUPPORTED_LANGUAGES: Language[] = ["en", "hi", "mr", "ta", "te"]
+
+export const LANGUAGE_STORAGE_KEY = "bhoomitra_language"
+
+export function isLanguage(value: unknown): value is Language {
+  return typeof value === "string" && (SUPPORTED_LANGUAGES as string[]).includes(value)
+}
+
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined)
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
+  // Always start at "en" so server and first client render agree; the saved
+  // preference is applied after hydration.
   const [language, setLanguageState] = useState<Language>("en")
 
-  // Load language preference from localStorage on mount
   useEffect(() => {
-    const saved = localStorage.getItem("bhoomitra_language") as Language | null
-    if (saved && ["en", "hi", "mr", "ta", "te"].includes(saved)) {
-      setLanguageState(saved)
+    try {
+      const saved = window.localStorage.getItem(LANGUAGE_STORAGE_KEY)
+      if (isLanguage(saved)) setLanguageState(saved)
+    } catch {
+      // Private mode / disabled storage — keep the English default.
     }
   }, [])
 
@@ -29,8 +40,13 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   }, [language])
 
   const setLanguage = (lang: Language) => {
+    if (!isLanguage(lang)) return
     setLanguageState(lang)
-    localStorage.setItem("bhoomitra_language", lang)
+    try {
+      window.localStorage.setItem(LANGUAGE_STORAGE_KEY, lang)
+    } catch {
+      // Preference simply does not persist when storage is unavailable.
+    }
   }
 
   return (
