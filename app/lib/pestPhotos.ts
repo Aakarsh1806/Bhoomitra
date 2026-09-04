@@ -1,0 +1,30 @@
+import fs from "fs"
+import path from "path"
+
+const photoDir = path.join(process.cwd(), "app/data/pest-photos")
+const formats = { jpg: "image/jpeg", png: "image/png", webp: "image/webp" } as const
+export function photoExtension(bytes: Buffer): keyof typeof formats | null {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "jpg"
+  if (bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return "png"
+  if (bytes.length >= 12 && bytes.toString("ascii", 0, 4) === "RIFF" && bytes.toString("ascii", 8, 12) === "WEBP") return "webp"
+  return null
+}
+
+export function savePestPhoto(bytes: Buffer) {
+  const extension = photoExtension(bytes)
+  if (!extension) throw new Error("Choose a JPG, PNG or WEBP photo.")
+  fs.mkdirSync(photoDir, { recursive: true })
+  const name = `${crypto.randomUUID()}.${extension}`
+  fs.writeFileSync(path.join(photoDir, name), bytes, { flag: "wx", mode: 0o600 })
+  return name
+}
+
+export function readPestPhoto(name: string) {
+  // No user paths, SVGs, HTML, or arbitrary filesystem reads.
+  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}\.(jpg|png|webp)$/.test(name)) return null
+  try {
+    const bytes = fs.readFileSync(path.join(photoDir, name))
+    const extension = photoExtension(bytes)
+    return extension ? { bytes, contentType: formats[extension] } : null
+  } catch { return null }
+}

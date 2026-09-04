@@ -1,8 +1,10 @@
 import json
 import os
+from collections import defaultdict
 from io import BytesIO
 from typing import Any
 
+import numpy as np
 from flask import Flask, jsonify, request
 from PIL import Image, ImageOps
 
@@ -27,7 +29,7 @@ def active_config() -> dict[str, Any]:
     for entry in registry.get("models", []):
         if entry.get("model_id") == model_id and entry.get("enabled", True):
             return entry
-    raise RuntimeError("No enabled pest classifier is configured.")
+    raise RuntimeError("No enabled pest detector is configured.")
 
 
 def resolve_path(config: dict[str, Any], key: str, env_key: str) -> str:
@@ -39,82 +41,94 @@ def resolve_path(config: dict[str, Any], key: str, env_key: str) -> str:
     return os.path.join(BASE_DIR, configured)
 
 
-def load_labels(config: dict[str, Any]) -> list[str]:
+def load_expected_labels(config: dict[str, Any]) -> list[str]:
     labels_path = resolve_path(config, "labels_path", "PEST_LABELS_PATH")
     if not labels_path or not os.path.exists(labels_path):
         raise FileNotFoundError(f"Pest class names are missing at {labels_path or 'the configured path'}.")
 
     with open(labels_path, "r", encoding="utf-8") as handle:
         labels = json.load(handle)
-
     if not isinstance(labels, list) or not labels or not all(isinstance(item, str) and item.strip() for item in labels):
-        raise ValueError("class_names.json must contain a non-empty JSON list of class names.")
+        raise ValueError("The detector class-name file must contain a non-empty JSON list.")
     return [item.strip() for item in labels]
 
 
-def load_classifier(config: dict[str, Any]):
-    model_id = str(config.get("model_id", "bhoomitra_pest_classifier_v1"))
+def names_as_list(names: Any) -> list[str]:
+    if isinstance(names, dict):
+        return [str(names[index]) for index in sorted(names)]
+    if isinstance(names, (list, tuple)):
+        return [str(item) for item in names]
+    raise ValueError("The YOLO checkpoint does not expose readable class names.")
+
+
+def load_detector(config: dict[str, Any]):
+    model_id = str(config.get("model_id", "bhoomitra_pest_detector_yolo26_v1"))
     if model_id in _model_cache:
         return _model_cache[model_id]
 
     model_path = resolve_path(config, "model_path", "PEST_MODEL_PATH")
     if not model_path or not os.path.exists(model_path):
-        raise FileNotFoundError(f"TorchScript pest classifier is missing at {model_path or 'the configured path'}.")
+        raise FileNotFoundError(f"YOLO pest detector is missing at {model_path or 'the configured path'}.")
 
     try:
-        import torch
+        from ultralytics import YOLO
     except ImportError as exc:
-        raise RuntimeError("PyTorch is not installed. Install pest_ml_service/requirements.txt.") from exc
+        raise RuntimeError("Ultralytics is not installed. Install pest_ml_service/requirements.txt.") from exc
 
-    labels = load_labels(config)
-    model = torch.jit.load(model_path, map_location="cpu")
-    model.eval()
-    _model_cache[model_id] = (model, labels)
-    return model, labels
+    expected_labels = load_expected_labels(config)
+    model = YOLO(model_path, task="detect")
+    checkpoint_labels = names_as_list(model.names)
+    if checkpoint_labels != expected_labels:
+        raise ValueError(
+            "Checkpoint labels do not match pest_detector_yolo26_v1.classes.json. "
+            f"Checkpoint: {checkpoint_labels}; configured: {expected_labels}."
+        )
+
+    _model_cache[model_id] = (model, checkpoint_labels)
+    return model, checkpoint_labels
 
 
-def prepare_image(image: Image.Image, config: dict[str, Any]):
-    import numpy as np
-    import torch
+def predict_with_retry(model, image: Image.Image, config: dict[str, Any]):
+    """Keep a successful normal pass; retry an empty pass once at a larger size."""
+    # PIL is RGB; Ultralytics NumPy inputs must be OpenCV-style BGR.
+    bgr_image = np.ascontiguousarray(np.asarray(image)[:, :, ::-1])
+    input_size = int(config.get("input_size", 640))
+    retry_size = int(config.get("retry_input_size", 1280))
+    options = {
+        "source": bgr_image,
+        "conf": float(os.getenv("PEST_CONFIDENCE_THRESHOLD", str(config.get("confidence_threshold", 0.35)))),
+        "iou": float(config.get("iou_threshold", 0.5)),
+        "max_det": int(config.get("max_detections", 100)),
+        "device": os.getenv("PEST_DEVICE", str(config.get("device", "cpu"))),
+        "verbose": False,
+    }
+    result = model.predict(imgsz=input_size, **options)[0]
+    attempted_sizes = [input_size]
+    if (result.boxes is None or len(result.boxes) == 0) and retry_size > input_size:
+        # Use the same confidence threshold, and do not merge/double-count boxes.
+        result = model.predict(imgsz=retry_size, **options)[0]
+        attempted_sizes.append(retry_size)
+    return result, {
+        "inputSize": attempted_sizes[-1],
+        "retryUsed": len(attempted_sizes) > 1,
+        "attemptedSizes": attempted_sizes,
+    }
 
-    size = int(config.get("input_size", 224))
-    mean = np.asarray(config.get("normalization_mean", [0.485, 0.456, 0.406]), dtype=np.float32)
-    std = np.asarray(config.get("normalization_std", [0.229, 0.224, 0.225]), dtype=np.float32)
 
-    image = ImageOps.exif_transpose(image).convert("RGB")
-    if config.get("resize_mode", "stretch") == "center_crop":
-        width, height = image.size
-        scale = size / min(width, height)
-        resized = image.resize((round(width * scale), round(height * scale)), Image.Resampling.BILINEAR)
-        left = max(0, (resized.width - size) // 2)
-        top = max(0, (resized.height - size) // 2)
-        image = resized.crop((left, top, left + size, top + size))
+def image_pressure(visible_count: int, coverage_ratio: float) -> dict[str, Any]:
+    """Return an image-level cue, never a whole-field severity estimate."""
+    if visible_count >= 8 or (visible_count >= 4 and coverage_ratio >= 0.05):
+        level = "high"
+    elif visible_count >= 3 or (visible_count >= 2 and coverage_ratio >= 0.02):
+        level = "moderate"
     else:
-        image = image.resize((size, size), Image.Resampling.BILINEAR)
-
-    array = np.asarray(image, dtype=np.float32) / 255.0
-    array = (array - mean) / std
-    array = np.transpose(array, (2, 0, 1)).copy()
-    return torch.from_numpy(array).unsqueeze(0)
-
-
-def extract_logits(output: Any):
-    import torch
-
-    if isinstance(output, dict):
-        for key in ("logits", "output", "predictions"):
-            if key in output:
-                output = output[key]
-                break
-    if isinstance(output, (tuple, list)):
-        output = output[0]
-    if not isinstance(output, torch.Tensor):
-        raise TypeError("The TorchScript model did not return a tensor of class logits.")
-    if output.ndim == 1:
-        output = output.unsqueeze(0)
-    if output.ndim != 2 or output.shape[0] != 1:
-        raise ValueError(f"Expected classifier output [1, classes], received {list(output.shape)}.")
-    return output
+        level = "low"
+    return {
+        "level": level,
+        "visibleCount": visible_count,
+        "boxCoverageRatio": coverage_ratio,
+        "basis": "Visible detections and their bounding-box coverage in this image only.",
+    }
 
 
 def model_status() -> dict[str, Any]:
@@ -122,14 +136,14 @@ def model_status() -> dict[str, Any]:
     model_path = resolve_path(config, "model_path", "PEST_MODEL_PATH")
     labels_path = resolve_path(config, "labels_path", "PEST_LABELS_PATH")
     try:
-        model, labels = load_classifier(config)
+        model, labels = load_detector(config)
         del model
         return {
             "ready": True,
             "classCount": len(labels),
             "modelPath": model_path,
             "labelsPath": labels_path,
-            "message": f"TorchScript pest classifier is ready with {len(labels)} classes.",
+            "message": f"YOLO pest detector is ready with {len(labels)} classes.",
         }
     except Exception as exc:
         return {
@@ -148,11 +162,11 @@ def health():
     status = model_status()
     return jsonify(
         {
-            "service": "bhoomitra-pest-classifier",
+            "service": "bhoomitra-pest-detector",
             **status,
-            "modelId": config.get("model_id", "bhoomitra_pest_classifier_v1"),
+            "modelId": config.get("model_id", "bhoomitra_pest_detector_yolo26_v1"),
             "modelVersion": config.get("model_version", "1.0.0"),
-            "task": "image-classification",
+            "task": "object-detection",
         }
     )
 
@@ -180,7 +194,7 @@ def predict():
 
     config = active_config()
     try:
-        model, labels = load_classifier(config)
+        model, labels = load_detector(config)
     except Exception as exc:
         return jsonify({"error": str(exc), "ready": False}), 503
 
@@ -189,46 +203,77 @@ def predict():
         raw = image_file.read()
         if not raw:
             raise ValueError("The uploaded image is empty.")
-        image = Image.open(BytesIO(raw))
+        image = ImageOps.exif_transpose(Image.open(BytesIO(raw))).convert("RGB")
         source_width, source_height = image.size
-        tensor = prepare_image(image, config)
+        if source_width < 32 or source_height < 32:
+            raise ValueError("The uploaded image is too small.")
     except Exception:
         return jsonify({"error": "The uploaded file is not a readable image."}), 400
 
     try:
-        import torch
-
-        with torch.inference_mode():
-            logits = extract_logits(model(tensor))
-            if logits.shape[1] != len(labels):
-                raise ValueError(
-                    f"Model returns {logits.shape[1]} classes but class_names.json contains {len(labels)} names."
-                )
-            probabilities = torch.softmax(logits, dim=1)[0]
-            top_k = min(int(config.get("top_k", 3)), len(labels))
-            values, indices = torch.topk(probabilities, k=top_k)
+        result, inference = predict_with_retry(model, image, config)
     except Exception as exc:
-        app.logger.exception("Pest classifier inference failed")
-        return jsonify({"error": f"Pest classifier inference failed: {exc}"}), 500
+        app.logger.exception("Pest detector inference failed")
+        return jsonify({"error": f"Pest detector inference failed: {exc}"}), 500
 
-    predictions = [
-        {
-            "classId": int(class_id),
-            "label": labels[int(class_id)],
-            "confidence": float(confidence),
-        }
-        for confidence, class_id in zip(values.tolist(), indices.tolist())
-    ]
+    detections: list[dict[str, Any]] = []
+    grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
+    if result.boxes is not None:
+        xyxy = result.boxes.xyxy.detach().cpu().tolist()
+        confidences = result.boxes.conf.detach().cpu().tolist()
+        class_ids = result.boxes.cls.detach().cpu().int().tolist()
+        for raw_box, raw_confidence, class_id in zip(xyxy, confidences, class_ids):
+            if class_id < 0 or class_id >= len(labels):
+                continue
+            x1 = max(0.0, min(float(source_width), float(raw_box[0])))
+            y1 = max(0.0, min(float(source_height), float(raw_box[1])))
+            x2 = max(x1, min(float(source_width), float(raw_box[2])))
+            y2 = max(y1, min(float(source_height), float(raw_box[3])))
+            width = x2 - x1
+            height = y2 - y1
+            area_ratio = (width * height) / max(1.0, float(source_width * source_height))
+            detection = {
+                "classId": int(class_id),
+                "label": labels[class_id],
+                "confidence": float(raw_confidence),
+                "box": {"x1": x1, "y1": y1, "x2": x2, "y2": y2, "width": width, "height": height},
+                "areaRatio": area_ratio,
+            }
+            detections.append(detection)
+            grouped[class_id].append(detection)
+
+    summaries = []
+    for class_id, items in grouped.items():
+        summaries.append(
+            {
+                "classId": class_id,
+                "label": labels[class_id],
+                "confidence": max(float(item["confidence"]) for item in items),
+                "meanConfidence": sum(float(item["confidence"]) for item in items) / len(items),
+                "count": len(items),
+                "boxCoverageRatio": min(1.0, sum(float(item["areaRatio"]) for item in items)),
+            }
+        )
+    summaries.sort(key=lambda item: (item["confidence"], item["count"]), reverse=True)
+
+    primary = summaries[0] if summaries else None
+    primary_detections = [item for item in detections if primary and item["classId"] == primary["classId"]]
+    visible_count = len(primary_detections)
+    coverage_ratio = min(1.0, sum(float(item["areaRatio"]) for item in primary_detections))
 
     return jsonify(
         {
             "modelId": config.get("model_id"),
             "modelVersion": config.get("model_version"),
-            "task": "image-classification",
+            "task": "object-detection",
             "image": {"width": source_width, "height": source_height},
-            "primaryPrediction": predictions[0],
-            "predictions": predictions,
-            "limitations": "This classifier identifies the dominant pest category in one image; it does not count pests or locate them with bounding boxes.",
+            "detected": primary is not None,
+            "inference": inference,
+            "primaryPrediction": primary,
+            "predictions": summaries[:3],
+            "detections": detections,
+            "pressure": image_pressure(visible_count, coverage_ratio) if primary else None,
+            "limitations": "Counts and bounding boxes apply only to visible pests in this photo; they do not estimate whole-field severity.",
         }
     )
 

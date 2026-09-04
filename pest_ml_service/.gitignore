@@ -3,5 +3,6 @@ __pycache__/
 *.pyc
 models/*.pt
 !models/pest_detector.pt
+!models/pest_detector_yolo26_v1.pt
 models/*.onnx
 models/*.tflite
