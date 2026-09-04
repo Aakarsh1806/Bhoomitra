@@ -1,723 +1,205 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import {
-  AlertTriangle,
-  BadgeCheck,
-  Bug,
-  Camera,
-  CheckCircle2,
-  ChevronRight,
-  Clock3,
-  CloudOff,
-  Eye,
-  FlaskConical,
-  History,
-  ImagePlus,
-  Leaf,
-  Loader2,
-  MapPin,
-  Microscope,
-  RefreshCw,
-  ShieldCheck,
-  Sprout,
-  Volume2,
-} from "lucide-react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { AlertTriangle, Bug, Camera, ImagePlus, Leaf, Loader2, MapPin, Microscope, RefreshCw, X } from "lucide-react"
 import { toast } from "sonner"
-import { useLanguage } from "@/lib/language-context"
-import { useTranslation } from "@/lib/use-translation"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { usePestText } from "@/components/pest-zone-copy"
+import { PestZoneResult, zoneColours, zoneLabels } from "@/components/pest-zone-result"
+import { zoneState, type PestZoneObservation, type PestZoneState } from "@/lib/pest-zone-types"
 
 const FALLBACK_ZONES = ["A1", "A2", "A3", "A4", "A5", "A6", "B1", "B2", "B3", "B4", "B5", "B6"]
-const SUPPORTED_CROPS = ["Paddy", "Tomato", "Cotton", "Chilli", "Okra", "Maize", "Potato", "Mustard", "Sugarcane"]
-
-type PestStatus = "new" | "monitoring" | "improving" | "increasing" | "resolved"
-type ConfidenceBand = "low" | "medium" | "high"
-
-type PestPrediction = {
-  label: string
-  pestId: string
-  confidence: number
-}
-
-type PesticideAdvice = {
-  product: string
-  type: string
-  modeOfAction: string
-  resistanceNote: string
-  labelRate: string
-  application: string
-  interval: string
-  preHarvestInterval: string
-  trigger: string
-  safety: string
-  eligible: boolean
-  blockedReason: string | null
-}
-
-type PestResult = {
-  success: boolean
-  persisted: boolean
-  recordId: string | null
-  model: { modelId: string; modelVersion: string; ready: boolean; task: string }
-  scan: { zoneId: string; crop: string; timestamp: string; imageName: string | null }
-  summary: {
-    primaryPestId: string
-    primaryPestName: string
-    scientificName: string
-    confidence: number
-    confidenceBand: ConfidenceBand
-    cropMatch: "matched" | "review" | "not_applicable"
-    identityNeedsReview: boolean
-  }
-  predictions: PestPrediction[]
-  classificationLimit: string
-  pest: { damageSigns: string[]; whyItMatters: string }
-  advice: {
-    inspectToday: string[]
-    next48Hours: string[]
-    prevention: string[]
-    biologicalControl: string[]
-    pesticide: PesticideAdvice
-  }
-  safety: {
-    identityConfirmationRequired: boolean
-    fieldThresholdRequired: boolean
-    automaticChemicalAction: boolean
-    message: string
-  }
-}
-
-type PestRecord = {
-  id: string
-  zoneId: string
-  crop: string
-  pestName: string
-  scientificName: string
-  confidence: number
-  confidenceBand: ConfidenceBand
-  timestamp: string
-  farmerConfirmed: boolean
-  status: PestStatus
-  followUpDue: string
-}
-
-type ModelStatus = {
-  integrationReady: boolean
-  model: { reachable: boolean; ready: boolean; modelId: string; modelVersion: string; classCount: number; message: string }
-}
-
-type SprayWindow = { safeNow: boolean; headline: string; source?: string }
-
-const statusStyle: Record<PestStatus, string> = {
-  new: "bg-sky-100 text-sky-800",
-  monitoring: "bg-amber-100 text-amber-900",
-  improving: "bg-emerald-100 text-emerald-800",
-  increasing: "bg-red-100 text-red-800",
-  resolved: "bg-slate-100 text-slate-700",
-}
-
-const confidenceBandStyle: Record<ConfidenceBand, { badge: string; bar: string; labelKey: "pests.confidence.high" | "pests.confidence.medium" | "pests.confidence.low" }> = {
-  high: { badge: "bg-green-100 text-green-800", bar: "bg-green-600", labelKey: "pests.confidence.high" as const },
-  medium: { badge: "bg-amber-100 text-amber-900", bar: "bg-amber-500", labelKey: "pests.confidence.medium" as const },
-  low: { badge: "bg-red-100 text-red-800", bar: "bg-red-500", labelKey: "pests.confidence.low" as const },
-}
-
-const MIN_CONFIDENCE_TO_SHOW = 0.65
-
-function formatConfidence(value: number) {
-  return `${Math.round(value * 100)}%`
-}
-
-function formatDate(value: string) {
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return "Unknown time"
-  return new Intl.DateTimeFormat("en-IN", {
-    day: "numeric",
-    month: "short",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date)
-}
-
-function ActionList({ items }: { items: string[] }) {
-  return (
-    <div className="space-y-4">
-      {items.map((item, index) => (
-        <div key={`${item}-${index}`} className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-green-100 text-sm font-extrabold text-green-800">
-            {index + 1}
-          </div>
-          <p className="text-base font-medium leading-7 text-slate-700">{item}</p>
-        </div>
-      ))}
-    </div>
-  )
-}
+const SUPPORTED_CROPS = ["Paddy", "Rice", "Maize", "Cotton", "Groundnut", "Soybean", "Tomato", "Chilli", "Okra", "Potato", "Mustard", "Sugarcane", "Vegetables"]
+type ModelStatus = { model: { ready: boolean; classCount: number } }
 
 export default function PestDetectionPage() {
-  const { language } = useLanguage()
+  const { text, language } = usePestText()
+  const inputRef = useRef<HTMLInputElement>(null)
+  const uploadRef = useRef<HTMLButtonElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
+  const scanInFlight = useRef(false)
+  const retaking = useRef(false)
+  const historyRequest = useRef(0)
+  const cropTouched = useRef(false)
   const [file, setFile] = useState<File | null>(null)
   const [preview, setPreview] = useState<string | null>(null)
-  const t = useTranslation()
   const [zone, setZone] = useState("A1")
   const [crop, setCrop] = useState("Paddy")
   const [farmCrop, setFarmCrop] = useState("Paddy")
-  const [zoneOptions, setZoneOptions] = useState(FALLBACK_ZONES)
-  const [result, setResult] = useState<PestResult | null>(null)
-  const [history, setHistory] = useState<PestRecord[]>([])
-  const [summary, setSummary] = useState({ active: 0, increasing: 0, followUpsDue: 0 })
+  const [zones, setZones] = useState(FALLBACK_ZONES)
+  const [observations, setObservations] = useState<PestZoneObservation[]>([])
+  const [viewId, setViewId] = useState<string | null>(null)
   const [modelStatus, setModelStatus] = useState<ModelStatus | null>(null)
-  const [sprayWindow, setSprayWindow] = useState<SprayWindow | null>(null)
   const [loading, setLoading] = useState(false)
-  const [historyLoading, setHistoryLoading] = useState(false)
-  const [confirming, setConfirming] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(true)
+  const [historyError, setHistoryError] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [nextStep, setNextStep] = useState<string | null>(null)
+  const [comparable, setComparable] = useState(false)
+  const [confirming, setConfirming] = useState(false)
 
-  const cropOptions = useMemo(
-    () => Array.from(new Set([farmCrop, ...SUPPORTED_CROPS].filter(Boolean))),
-    [farmCrop],
-  )
+  const cropOptions = useMemo(() => [...new Set([farmCrop, crop, ...SUPPORTED_CROPS])]
+    .filter((item) => item !== (crop === "Rice" ? "Paddy" : "Rice")), [farmCrop, crop])
+  const latestByZone = useMemo(() => {
+    const result = new Map<string, PestZoneObservation>()
+    for (const observation of observations) if (!result.has(observation.result.scan.zoneId)) result.set(observation.result.scan.zoneId, observation)
+    return result
+  }, [observations])
+  const viewed = observations.find((item) => item.id === viewId)
+  const zoneHistory = viewed ? observations.filter((item) => item.result.scan.zoneId === viewed.result.scan.zoneId) : []
+  const previous = latestByZone.get(zone)
 
-  const refreshHistory = async () => {
+  const refreshHistory = useCallback(async () => {
+    const requestId = ++historyRequest.current
     setHistoryLoading(true)
     try {
-      const response = await fetch("/api/pests", { cache: "no-store" })
+      const response = await fetch("/api/pest-zones", { cache: "no-store" })
+      if (!response.ok) throw new Error("Could not load zone history. Please refresh.")
       const body = await response.json()
-      if (!response.ok) throw new Error(body?.error || "Could not load pest history")
-      setHistory(Array.isArray(body.records) ? body.records : [])
-      setSummary(body.summary || { active: 0, increasing: 0, followUpsDue: 0 })
-    } catch (historyError) {
-      console.error(historyError)
+      if (!Array.isArray(body.observations)) throw new Error("Invalid zone history")
+      if (requestId === historyRequest.current) { setObservations(body.observations); setHistoryError(false) }
+    } catch {
+      if (requestId === historyRequest.current) setHistoryError(true)
     } finally {
-      setHistoryLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    let active = true
-
-    Promise.allSettled([
-      fetch("/api/zones").then((response) => response.json()),
-      fetch("/api/farmer-profile").then((response) => response.json()),
-      fetch("/api/pest-detect").then((response) => response.json()),
-      fetch("/api/spray-window").then((response) => response.json()),
-    ]).then(([zonesResponse, profileResponse, modelResponse, weatherResponse]) => {
-      if (!active) return
-
-      if (zonesResponse.status === "fulfilled") {
-        const candidateZones = Array.isArray(zonesResponse.value)
-          ? zonesResponse.value
-          : zonesResponse.value?.zones
-        const ids = Array.isArray(candidateZones)
-          ? candidateZones.map((item: { id?: string }) => item.id).filter((id: unknown): id is string => typeof id === "string")
-          : []
-        if (ids.length) setZoneOptions(ids)
-      }
-
-      if (profileResponse.status === "fulfilled") {
-        const profileCrop = profileResponse.value?.profile?.primaryCrop?.trim()
-        if (profileCrop) {
-          setFarmCrop(profileCrop)
-          setCrop(profileCrop)
-        }
-      }
-
-      if (modelResponse.status === "fulfilled") setModelStatus(modelResponse.value)
-      if (weatherResponse.status === "fulfilled") setSprayWindow(weatherResponse.value)
-    })
-
-    void refreshHistory()
-    return () => {
-      active = false
+      if (requestId === historyRequest.current) setHistoryLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    return () => {
-      if (preview) URL.revokeObjectURL(preview)
-    }
-  }, [preview])
+    let active = true
+    void refreshHistory()
+    Promise.allSettled([
+      fetch("/api/zones").then((response) => response.json()),
+      fetch("/api/farmer-profile").then((response) => response.json()),
+      fetch("/api/pest-detect").then((response) => response.json()),
+    ]).then(([zoneResponse, profileResponse, modelResponse]) => {
+      if (!active) return
+      if (zoneResponse.status === "fulfilled") {
+        const values = Array.isArray(zoneResponse.value) ? zoneResponse.value : zoneResponse.value?.zones
+        const ids = Array.isArray(values) ? values.map((item: { id: string }) => item.id).filter(Boolean) : []
+        if (ids.length) setZones([...new Set<string>(ids)].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })))
+      }
+      if (profileResponse.status === "fulfilled") {
+        const registeredCrop = profileResponse.value?.profile?.primaryCrop?.trim()
+        if (registeredCrop) { setFarmCrop(registeredCrop); if (!cropTouched.current) setCrop(registeredCrop) }
+      }
+      if (modelResponse.status === "fulfilled") setModelStatus(modelResponse.value)
+    })
+    return () => { active = false; historyRequest.current++; window.speechSynthesis?.cancel() }
+  }, [refreshHistory])
 
+  useEffect(() => () => { if (preview) URL.revokeObjectURL(preview) }, [preview])
+
+  const openFilePicker = () => {
+    if (loading || !inputRef.current) return
+    inputRef.current.value = ""
+    inputRef.current.click()
+  }
   const selectImage = (selected?: File) => {
     if (!selected) return
-    if (preview) URL.revokeObjectURL(preview)
-    setFile(selected)
-    setPreview(URL.createObjectURL(selected))
-    setResult(null)
-    setError(null)
-    setNextStep(null)
+    if (!["image/jpeg", "image/png", "image/webp"].includes(selected.type)) { setError("Choose a JPG, PNG or WEBP photo."); return }
+    if (selected.size > 12 * 1024 * 1024) { setError("Choose a photo smaller than 12 MB."); return }
+    setFile(selected); setPreview(URL.createObjectURL(selected)); setError(null); setComparable(false)
+  }
+  const chooseZone = (id: string, openResult: boolean) => {
+    setZone(id); setComparable(false); setError(null)
+    const latest = latestByZone.get(id)
+    if (latest) { cropTouched.current = true; setCrop(latest.result.scan.crop); if (openResult) setViewId(latest.id) }
+  }
+  const mergeObservation = (observation: PestZoneObservation) => {
+    setObservations((items) => [observation, ...items.filter((item) => item.id !== observation.id)].sort((a, b) => Date.parse(b.result.scan.timestamp) - Date.parse(a.result.scan.timestamp)))
   }
 
   const runScan = async () => {
-    if (!file) {
-      toast.error(t("pests.needPhotoFirst"))
-      return
-    }
-
+    if (!file || scanInFlight.current) return
+    scanInFlight.current = true; setLoading(true); setError(null)
+    // Capture the selected zone/crop with the file. Controls are locked during inference.
     const form = new FormData()
-    form.append("zoneId", zone)
-    form.append("crop", crop)
-    form.append("language", language)
-    if (file) form.append("file", file)
-
-    setLoading(true)
-    setError(null)
-    setNextStep(null)
-    setResult(null)
-
+    form.set("file", file); form.set("zoneId", zone); form.set("crop", crop); form.set("language", language)
+    form.set("comparablePhoto", String(comparable))
     try {
       const response = await fetch("/api/pest-detect", { method: "POST", body: form })
       const body = await response.json()
-      if (!response.ok) {
-        setNextStep(body?.nextStep || null)
-        throw new Error(body?.error || "The pest check could not be completed.")
-      }
-      setResult(body)
-      toast.success(t("pests.checkComplete", { zone }))
+      if (!response.ok || !body.observation) throw new Error(body.error || "The pest check could not be completed.")
+      ++historyRequest.current // Ignore a history request that began before this scan saved.
+      setHistoryLoading(false)
+      mergeObservation(body.observation); setViewId(body.observation.id)
+      setFile(null); setPreview(null); setComparable(false)
+      toast[body.detected ? "success" : "info"](text(body.detected ? "Check completed and saved to the zone." : "Scan inconclusive. Please recheck the plant."))
       void refreshHistory()
-    } catch (scanError) {
-      const message = scanError instanceof Error ? scanError.message : "The pest check could not be completed."
-      setError(message)
-      toast.error(message)
-    } finally {
-      setLoading(false)
-    }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "The pest check could not be completed.")
+    } finally { scanInFlight.current = false; setLoading(false) }
   }
 
-  const confirmResult = async () => {
-    if (!result) return
+  const retake = () => {
+    if (!viewed) return
+    setZone(viewed.result.scan.zoneId)
+    setCrop(latestByZone.get(viewed.result.scan.zoneId)?.result.scan.crop || viewed.result.scan.crop)
+    cropTouched.current = true; setFile(null); setPreview(null); setComparable(false); setError(null)
+    retaking.current = true; setViewId(null)
+    window.speechSynthesis?.cancel()
+  }
+  const confirmClear = async () => {
+    if (!viewed || confirming) return
     setConfirming(true)
     try {
-      const response = await fetch("/api/pests", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: result.recordId,
-          status: "monitoring",
-          farmerConfirmed: true,
-          outcomeNote: "Farmer reviewed the classifier result and prevention plan.",
-        }),
-      })
+      const response = await fetch("/api/pest-zones", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ observationId: viewed.id, fieldCheckedNoPests: true }) })
       const body = await response.json()
-      if (!response.ok) throw new Error(body?.error || "Could not save this observation.")
-      setResult((current) => current ? { ...current, persisted: true, recordId: body.record?.id || current.recordId } : current)
-      toast.success(t("pests.confirmedToAudit"))
-      await refreshHistory()
-    } catch (confirmError) {
-      toast.error(confirmError instanceof Error ? confirmError.message : t("pests.couldNotSaveObservation"))
-    } finally {
-      setConfirming(false)
-    }
+      if (!response.ok) throw new Error(body.error || "Could not save field confirmation.")
+      ++historyRequest.current; setHistoryLoading(false); mergeObservation(body.observation)
+      toast.success(text("Field check saved.")); void refreshHistory()
+    } catch (reason) { toast.error(text(reason instanceof Error ? reason.message : "Could not save field confirmation.")) }
+    finally { setConfirming(false) }
   }
 
-  const updateOutcome = async (id: string, status: PestStatus) => {
-    try {
-      const response = await fetch("/api/pests", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, status }),
-      })
-      const body = await response.json()
-      if (!response.ok) throw new Error(body?.error || "Could not save the follow-up.")
-      toast.success(t("pests.followUpSaved"))
-      await refreshHistory()
-    } catch (outcomeError) {
-      toast.error(outcomeError instanceof Error ? outcomeError.message : t("pests.couldNotSaveFollowUp"))
-    }
-  }
+  return <div className="space-y-7 pb-10" data-no-runtime-translate="true">
+    <header className="flex flex-wrap items-start justify-between gap-4 sm:pr-28">
+      <div><h1 className="flex items-center gap-3 text-3xl font-extrabold text-[#1a2e1d] md:text-4xl"><Bug className="h-9 w-9 shrink-0 text-green-700" />{text("Pest Detection & Prevention")}</h1><p className="mt-3 max-w-3xl text-lg leading-7 text-slate-600">{text("Select a zone, check a photo, then open the zone for its plan and history.")}</p></div>
+      <span className={"rounded-full border px-4 py-2 text-sm font-semibold " + (modelStatus?.model?.ready ? "border-green-200 bg-green-50 text-green-800" : "border-slate-200 bg-white text-slate-600")}>{text(!modelStatus ? "Checking model…" : modelStatus.model?.ready ? "Pest detector ready" : "Pest detector unavailable")}{modelStatus?.model?.ready ? " · " + modelStatus.model.classCount : ""}</span>
+    </header>
 
-  const speakAdvice = () => {
-    if (!result || typeof window === "undefined" || !("speechSynthesis" in window)) {
-      toast.error(t("pests.voiceUnsupported"))
-      return
-    }
-    const words = [
-      `${result.summary.primaryPestName} may be present.`,
-      ...result.advice.inspectToday,
-      ...result.advice.next48Hours,
-    ].join(" ")
-    window.speechSynthesis.cancel()
-    const utterance = new SpeechSynthesisUtterance(words)
-    utterance.lang = language === "hi" ? "hi-IN" : language === "te" ? "te-IN" : language === "ta" ? "ta-IN" : language === "mr" ? "mr-IN" : "en-IN"
-    window.speechSynthesis.speak(utterance)
-  }
-
-  const pestStatusKey: Record<PestStatus, "pests.status.new" | "pests.status.monitoring" | "pests.status.increasing" | "pests.status.improving" | "pests.status.resolved"> = {
-    new: "pests.status.new",
-    monitoring: "pests.status.monitoring",
-    increasing: "pests.status.increasing",
-    improving: "pests.status.improving",
-    resolved: "pests.status.resolved",
-  }
-  const sprayDecisionReady = false
-  const sprayDecisionTitle = t("pests.doNotSprayFromImage")
-
-  return (
-    <div className="min-h-screen space-y-8 pb-12 animate-in fade-in duration-500">
-      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="flex items-center gap-3 text-2xl font-extrabold text-[#1a2e1d] md:text-4xl">
-            <Bug className="h-9 w-9 text-green-700" />
-            {t("pests.pageTitle")}
-          </h1>
-          <p className="mt-2 max-w-3xl text-base font-medium text-[#4a634f] md:text-lg">
-            {t("pests.pageSubtitle")}
-          </p>
+    <div className="grid items-start gap-6 xl:grid-cols-[minmax(280px,330px)_minmax(0,1fr)]">
+      <section className="space-y-4 rounded-3xl border border-green-100 bg-white p-5 shadow-sm">
+        <h2 className="flex items-center gap-2 text-xl font-bold"><Camera className="text-green-700" />{text("Check a plant")}</h2><p className="text-base leading-6 text-slate-600">{text("Use one clear close-up. Include the insect and its damage where possible.")}</p>
+        <button ref={uploadRef} type="button" disabled={loading} onClick={openFilePicker} className="relative flex aspect-[16/9] w-full items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-green-200 bg-green-50/50 p-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-green-700 disabled:opacity-50">
+          {preview ? <><img src={preview} alt={text("Latest photo")} className="h-full w-full object-contain" /><span className="absolute bottom-2 rounded-full bg-black/75 px-3 py-1 text-sm text-white">{text("Tap to change photo")}</span></> : <span className="flex flex-col items-center gap-2 p-4 font-semibold text-green-800"><ImagePlus className="h-8 w-8" />{text("Take or choose a pest photo")}</span>}
+        </button>
+        <input ref={inputRef} type="file" className="hidden" accept="image/jpeg,image/png,image/webp" capture="environment" onChange={(event) => selectImage(event.target.files?.[0])} />
+        <div className="grid grid-cols-2 gap-3">
+          <label className="space-y-2 text-sm font-bold"><span className="flex items-center gap-1"><MapPin className="h-4 w-4 text-green-700" />{text("Field zone")}</span><select value={zone} disabled={loading} onChange={(event) => chooseZone(event.target.value, false)} className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-base">{zones.map((id) => <option key={id} value={id}>{text("Zone")} {id}</option>)}</select></label>
+          <label className="space-y-2 text-sm font-bold"><span className="flex items-center gap-1"><Leaf className="h-4 w-4 text-green-700" />{text("Crop")}</span><select value={crop} disabled={loading} onChange={(event) => { cropTouched.current = true; setCrop(event.target.value); setComparable(false) }} className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-base">{cropOptions.map((name) => <option key={name} value={name}>{text(name)}</option>)}</select></label>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="outline" className="gap-2 rounded-full border-green-200 bg-white px-4 py-2 text-green-800">
-            <CloudOff className="h-4 w-4" /> {t("pests.offlineReady")}
-          </Badge>
-          <Badge variant="outline" className={`gap-2 rounded-full px-4 py-2 ${modelStatus?.model?.ready ? "border-green-200 bg-green-50 text-green-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
-            <span className={`h-2 w-2 rounded-full ${modelStatus?.model?.ready ? "bg-green-500" : "bg-amber-500"}`} />
-            {modelStatus?.model?.ready ? t("pests.modelReady", { count: modelStatus.model.classCount || 19 }) : t("pests.modelUnavailable")}
-          </Badge>
+        {previous && <div className="space-y-2 rounded-xl bg-slate-50 p-3"><label className="flex cursor-pointer items-start gap-2 text-sm leading-6"><input type="checkbox" checked={comparable} disabled={loading} onChange={(event) => setComparable(event.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-green-700" /><span>{text("Same plants and similar photo distance as the previous test")}</span></label><p className="text-sm leading-5 text-slate-500">{text("Tick only for comparable photos. Otherwise no improvement claim is made.")}</p></div>}
+        <Button className="h-12 w-full rounded-xl bg-green-700 text-base font-bold hover:bg-green-800" disabled={loading || !file} onClick={() => void runScan()}>{loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Microscope className="mr-2 h-5 w-5" />}{text(loading ? "Checking photo…" : "Check this photo")}</Button>
+        <p className="text-center text-sm leading-6 text-slate-500">{text("Results save automatically to the selected zone.")}</p>
+        {error && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-red-900"><p className="flex items-center gap-2 font-bold"><AlertTriangle className="h-5 w-5 shrink-0" />{text("Pest analysis could not run")}</p><p className="mt-2 text-sm leading-6">{text(error)}</p></div>}
+      </section>
+
+      <section className="min-w-0 rounded-3xl border border-green-100 bg-white p-5 shadow-sm sm:p-6" aria-label={text("Pest map")}>
+        <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-2xl font-bold"><MapPin className="text-green-700" />{text("Farm Layout")}</h2><p className="mt-1 text-base text-slate-600">{text("Same farm zones · latest pest check")}</p></div><Button variant="outline" className="h-11 rounded-xl" disabled={historyLoading || loading} onClick={() => void refreshHistory()}><RefreshCw className={"mr-2 h-4 w-4 " + (historyLoading ? "animate-spin" : "")} />{text("Refresh")}</Button></div>
+        {historyError && <p role="alert" className="mt-4 rounded-xl bg-red-50 p-3 text-red-800">{text("Could not load zone history. Please refresh.")}</p>}
+        <div className="mt-5 grid grid-cols-3 gap-3 sm:grid-cols-6" aria-busy={historyLoading}>
+          {zones.map((id) => {
+            const latest = latestByZone.get(id)
+            const state = zoneState(latest)
+            const label = !latest && historyError ? "History unavailable" : !latest && historyLoading ? "Loading zone history…" : zoneLabels[state]
+            return <button key={id} type="button" disabled={loading || (historyLoading && !latest)} aria-label={text("Zone") + " " + id + ": " + text(label) + ". " + text(latest ? "View result" : "Select zone")} aria-pressed={zone === id} onClick={() => chooseZone(id, true)} className={"flex min-h-32 w-full min-w-0 flex-col items-center justify-center gap-2 rounded-2xl border-2 p-2 text-center shadow-sm transition hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-green-800 disabled:opacity-60 " + zoneColours[state] + (zone === id ? " ring-4 ring-green-800 ring-offset-2" : "")}><span className="text-2xl font-extrabold">{id}</span><span className="text-sm font-semibold leading-5">{text(label)}</span>{latest && <span className="text-xs font-medium">{new Date(latest.result.scan.timestamp).toLocaleDateString(language === "hi" ? "hi-IN" : "en-IN", { day: "numeric", month: "short" })}</span>}</button>
+          })}
         </div>
-      </header>
-
-      <div className="grid items-start gap-7 xl:grid-cols-12">
-        <Card className="overflow-hidden rounded-[2rem] border-green-100 shadow-lg xl:col-span-3">
-          <CardHeader className="bg-green-50/70 pb-4">
-            <CardTitle className="flex items-center gap-2 text-xl">
-              <Camera className="h-5 w-5 text-green-700" /> {t("pests.checkAPlant")}
-            </CardTitle>
-            <CardDescription>{t("pests.checkAPlantDesc")}</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4 pt-5">
-            <button
-              type="button"
-              onClick={() => document.getElementById("pest-image")?.click()}
-              className="group relative flex aspect-[16/9] w-full items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-green-200 bg-green-50/40 text-center transition hover:border-green-400 hover:bg-green-50"
-            >
-              {preview ? (
-                <>
-                  <img src={preview} alt={t("pests.photoPreviewAlt")} className="h-full w-full object-cover" />
-                  <span className="absolute bottom-3 rounded-full bg-black/70 px-4 py-2 text-xs font-bold text-white">{t("pests.tapToChange")}</span>
-                </>
-              ) : (
-                <span className="flex flex-col items-center p-4">
-                  <span className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-green-100 text-green-700">
-                    <ImagePlus className="h-6 w-6" />
-                  </span>
-                  <span className="font-bold text-green-900">{t("pests.takePhoto")}</span>
-                  <span className="mt-1 text-sm leading-5 text-slate-500">{t("pests.photoHint")}</span>
-                </span>
-              )}
-            </button>
-            <input
-              id="pest-image"
-              className="hidden"
-              type="file"
-              accept="image/*"
-              capture="environment"
-              onChange={(event) => selectImage(event.target.files?.[0])}
-            />
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                  <MapPin className="h-4 w-4 text-green-700" /> {t("pests.fieldZone")}
-                </label>
-                <Select value={zone} onValueChange={setZone}>
-                  <SelectTrigger className="h-12 rounded-xl text-base md:text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {zoneOptions.map((item) => <SelectItem key={item} value={item}>{t("pests.zoneLabel", { zone: item })}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <label className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                  <Leaf className="h-4 w-4 text-green-700" /> {t("pests.crop")}
-                </label>
-                <Select value={crop} onValueChange={setCrop}>
-                  <SelectTrigger className="h-12 rounded-xl text-base md:text-sm"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {cropOptions.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <p className="text-sm leading-5 text-slate-500">{t("pests.registeredCrop", { crop: farmCrop })}</p>
-
-            <Button
-              className="h-12 w-full rounded-xl bg-green-700 text-base font-bold hover:bg-green-800"
-              disabled={loading || !file}
-              onClick={() => void runScan()}
-            >
-              {loading ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Microscope className="mr-2 h-5 w-5" />}
-              {t("pests.checkPhoto")}
-            </Button>
-            <p className="text-center text-sm leading-5 text-slate-500">{t("pests.onlyRealResults")}</p>
-          </CardContent>
-        </Card>
-
-        <div className="space-y-6 xl:col-span-9">
-          {error ? (
-            <Card className="rounded-[2rem] border-amber-200 bg-amber-50 shadow-sm">
-              <CardContent className="flex gap-4 p-6">
-                <AlertTriangle className="mt-1 h-7 w-7 shrink-0 text-amber-700" />
-                <div>
-                  <h2 className="text-lg font-extrabold text-amber-950">{t("pests.analysisFailed")}</h2>
-                  <p className="mt-1 text-sm leading-6 text-amber-900">{error}</p>
-                  {nextStep && <p className="mt-3 rounded-xl bg-white/70 p-3 text-sm font-semibold text-amber-950">{t("pests.nextModelStep", { step: nextStep })}</p>}
-                </div>
-              </CardContent>
-            </Card>
-          ) : !result ? (
-            <Card className="flex min-h-[240px] md:min-h-[430px] items-center justify-center rounded-[2rem] border-green-100 bg-gradient-to-br from-white to-green-50/60 shadow-sm">
-              <CardContent className="max-w-xl p-6 md:p-10 text-center">
-                <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-green-100 text-green-700">
-                  <Eye className="h-10 w-10" />
-                </div>
-                <h2 className="text-2xl font-extrabold text-slate-900">{t("pests.whatYouReceive")}</h2>
-                <p className="mt-3 leading-7 text-slate-600">{t("pests.whatYouReceiveDesc")}</p>
-                <div className="mt-7 grid gap-3 text-left sm:grid-cols-2">
-                  {[t("pests.whatPest"), t("pests.whatShouldIDo")].map((item) => (
-                    <div key={item} className="rounded-2xl border border-green-100 bg-white p-4 text-center text-sm font-extrabold text-green-900 shadow-sm">{item}</div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <>
-              <Card className="overflow-hidden rounded-[2rem] border-green-100 shadow-lg">
-                <div className="bg-green-700 px-6 py-3 text-sm font-extrabold text-white">{t("pests.analysedBanner")}</div>
-                <CardContent className="grid gap-6 p-6 lg:grid-cols-2">
-                  <div className="relative aspect-[4/3] overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-br from-emerald-100 via-green-50 to-lime-100">
-                    {preview ? (
-                      <img src={preview} alt={t("pests.uploadedPhotoAlt")} className="h-full w-full object-contain" />
-                    ) : (
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <Leaf className="h-40 w-40 rotate-[-18deg] text-green-600/70" />
-                      </div>
-                    )}
-                    <div className="absolute bottom-3 left-3 right-3 rounded-xl bg-black/75 px-3 py-2 text-xs font-bold text-white">
-                      {t("pests.classifierNote")}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col justify-center">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Badge variant="outline">{t("pests.zoneLabel", { zone: result.scan.zoneId })}</Badge>
-                      <Badge variant="outline">{result.scan.crop}</Badge>
-                    </div>
-                    <p className="mt-5 text-sm font-bold uppercase tracking-[0.18em] text-green-700">{t("pests.possiblePest")}</p>
-                    <h2 className="mt-1 text-3xl font-black text-slate-950">{result.summary.primaryPestName}</h2>
-                    <p className="mt-1 text-sm italic text-slate-500">{result.summary.scientificName}</p>
-
-                    {result.summary.confidence > MIN_CONFIDENCE_TO_SHOW && (
-                      <div className="mt-4 rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                        <div className="flex items-center justify-between">
-                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("pests.modelConfidence")}</p>
-                          <Badge className={`${confidenceBandStyle[result.summary.confidenceBand].badge} shadow-none`}>
-                            {t(confidenceBandStyle[result.summary.confidenceBand].labelKey)}
-                          </Badge>
-                        </div>
-                        <div className="mt-2 flex items-center gap-3">
-                          <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
-                            <div
-                              className={`h-full rounded-full transition-all ${confidenceBandStyle[result.summary.confidenceBand].bar}`}
-                              style={{ width: `${Math.max(0, Math.min(100, result.summary.confidence * 100))}%` }}
-                            />
-                          </div>
-                          <span className="text-lg font-black text-slate-800">{formatConfidence(result.summary.confidence)}</span>
-                        </div>
-
-                        {result.predictions.length > 1 && (
-                          <div className="mt-4 space-y-2 border-t border-slate-200 pt-3">
-                            <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("pests.otherMatches")}</p>
-                            {result.predictions.slice(1).map((prediction) => (
-                              <div key={prediction.label} className="flex items-center justify-between gap-3 text-sm">
-                                <span className="font-semibold text-slate-600">{prediction.label}</span>
-                                <span className="font-bold text-slate-500">{formatConfidence(prediction.confidence)}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    <p className="mt-5 text-sm font-medium leading-6 text-slate-600">{result.classificationLimit}</p>
-                    <Button variant="outline" className="mt-5 w-full rounded-xl" onClick={speakAdvice}>
-                      <Volume2 className="mr-2 h-4 w-4" /> {t("pests.listenToAdvice")}
-                    </Button>
-                    <Button
-                      className="mt-3 h-12 w-full rounded-xl bg-green-700 text-base font-bold hover:bg-green-800"
-                      disabled={confirming || (result.persisted && history.some((record) => record.id === result.recordId && record.farmerConfirmed))}
-                      onClick={() => void confirmResult()}
-                    >
-                      {confirming ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
-                      {t("pests.confirmAndSave")}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-            </>
-          )}
-        </div>
-      </div>
-
-      {result && (
-        <>
-          <Card className="rounded-[2rem] border-green-100 shadow-sm">
-            <CardHeader className="pb-5">
-              <CardTitle className="flex items-center gap-3 text-2xl md:text-3xl">
-                <Sprout className="h-8 w-8 text-green-700" /> {t("pests.preventionPlan")}
-              </CardTitle>
-              <CardDescription className="text-base leading-7">{t("pests.preventionPlanDesc")}</CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-5 md:grid-cols-3">
-              <div className="rounded-2xl border border-red-100 bg-red-50/60 p-6">
-                <p className="mb-5 flex items-center gap-2 text-lg font-extrabold text-red-900"><Clock3 className="h-6 w-6" /> {t("pests.doToday")}</p>
-                <ActionList items={result.advice.inspectToday} />
-              </div>
-              <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-6">
-                <p className="mb-5 flex items-center gap-2 text-lg font-extrabold text-amber-950"><ChevronRight className="h-6 w-6" /> {t("pests.next48Hours")}</p>
-                <ActionList items={result.advice.next48Hours} />
-              </div>
-              <div className="rounded-2xl border border-green-100 bg-green-50/70 p-6">
-                <p className="mb-5 flex items-center gap-2 text-lg font-extrabold text-green-900"><ShieldCheck className="h-6 w-6" /> {t("pests.preventReturn")}</p>
-                <ActionList items={result.advice.prevention} />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-[2rem] border-blue-100 shadow-sm">
-            <CardHeader className="pb-5">
-              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-3 text-2xl md:text-3xl">
-                    <FlaskConical className="h-8 w-8 text-blue-700" /> {t("pests.treatmentGuidance")}
-                  </CardTitle>
-                  <CardDescription className="mt-2 text-base leading-7">{t("pests.treatmentGuidanceDesc")}</CardDescription>
-                </div>
-                <Badge className={`px-4 py-2 text-sm ${sprayDecisionReady ? "bg-green-100 text-green-900" : "bg-red-100 text-red-900"}`}>
-                  {sprayDecisionReady ? t("pests.conditionsSuitable") : t("pests.doNotSprayNow")}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className={`rounded-2xl border p-6 ${sprayDecisionReady ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}`}>
-                <p className={`text-sm font-extrabold uppercase tracking-[0.16em] ${sprayDecisionReady ? "text-green-700" : "text-red-700"}`}>{t("pests.whenShouldISpray")}</p>
-                <h3 className={`mt-2 text-2xl font-black ${sprayDecisionReady ? "text-green-950" : "text-red-950"}`}>{sprayDecisionTitle}</h3>
-                <p className="mt-3 text-base font-medium leading-7 text-slate-700">
-                  {result.advice.pesticide.blockedReason || result.advice.pesticide.trigger}
-                </p>
-                <p className="mt-3 text-base font-bold leading-7 text-slate-900">
-                  {t("pests.weatherGate", { status: sprayWindow?.safeNow
-                    ? t("pests.weatherAcceptable")
-                    : sprayWindow?.headline || t("pests.checkRainAndWind") })}
-                </p>
-              </div>
-
-              <div className="grid gap-5 lg:grid-cols-3">
-                <section className="rounded-2xl border border-green-100 bg-green-50/60 p-6">
-                  <p className="mb-5 flex items-center gap-2 text-xl font-extrabold text-green-950">
-                    <BadgeCheck className="h-6 w-6 text-green-700" /> {t("pests.step1")}
-                  </p>
-                  <ActionList items={result.advice.biologicalControl} />
-                </section>
-
-                <section className="rounded-2xl border border-amber-100 bg-amber-50/50 p-6">
-                  <p className="mb-5 flex items-center gap-2 text-xl font-extrabold text-amber-950">
-                    <Clock3 className="h-6 w-6" /> {t("pests.step2")}
-                  </p>
-                  <div className="space-y-4 text-base font-medium leading-7 text-slate-700">
-                    <p><strong className="text-slate-950">{t("pests.pestConfirmed")}</strong> {t("pests.pestConfirmedText")}</p>
-                    <p><strong className="text-slate-950">{t("pests.thresholdReached")}</strong> {t("pests.thresholdReachedText")}</p>
-                    <p><strong className="text-slate-950">{t("pests.weatherSafe")}</strong> {t("pests.weatherSafeText")}</p>
-                  </div>
-                </section>
-
-                <section className="rounded-2xl border border-blue-100 bg-blue-50/50 p-6">
-                  <p className="text-sm font-extrabold uppercase tracking-wider text-blue-700">{t("pests.step3")}</p>
-                  <p className="mt-2 text-xl font-extrabold leading-7 text-slate-950">{result.advice.pesticide.product}</p>
-                  <p className="mt-2 text-base text-slate-600">{result.advice.pesticide.type}</p>
-                  <Separator className="my-5" />
-                  <div className="space-y-4 text-base leading-7">
-                    <p><strong className="text-slate-950">{t("pests.whereToApply")}</strong> <span className="text-slate-700">{result.advice.pesticide.application}</span></p>
-                    <p><strong className="text-slate-950">{t("pests.howMuch")}</strong> <span className="text-slate-700">{result.advice.pesticide.labelRate}</span></p>
-                    <p><strong className="text-slate-950">{t("pests.whenToRecheck")}</strong> <span className="text-slate-700">{result.advice.pesticide.interval}</span></p>
-                  </div>
-                </section>
-              </div>
-
-              <div className="rounded-2xl bg-slate-900 p-6 text-base leading-7 text-white">
-                <strong className="text-lg">{t("pests.safety")}</strong> {result.advice.pesticide.safety} {result.advice.pesticide.resistanceNote} {t("pests.preHarvestInterval", { value: result.advice.pesticide.preHarvestInterval })}
-              </div>
-            </CardContent>
-          </Card>
-        </>
-      )}
-
-      <Card className="rounded-[2rem] border-green-100 shadow-sm">
-        <CardHeader>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2 text-2xl"><History className="text-green-700" /> {t("pests.historyTitle")}</CardTitle>
-              <CardDescription>{t("pests.historyDesc")}</CardDescription>
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs font-bold">
-              <Badge variant="outline">{t("pests.activeCount", { count: summary.active })}</Badge>
-              <Badge variant="outline" className="border-red-200 text-red-700">{t("pests.increasingCount", { count: summary.increasing })}</Badge>
-              <Badge variant="outline" className="border-amber-200 text-amber-800">{t("pests.followUpsDue", { count: summary.followUpsDue })}</Badge>
-              <Button variant="ghost" size="sm" disabled={historyLoading} onClick={() => void refreshHistory()}>
-                <RefreshCw className={`mr-2 h-4 w-4 ${historyLoading ? "animate-spin" : ""}`} /> {t("pests.refresh")}
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {history.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">{t("pests.noObservations")}</div>
-          ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
-              {history.slice(0, 8).map((record) => (
-                <div key={record.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-lg font-extrabold text-slate-900">{record.pestName}</p>
-                      <p className="text-xs italic text-slate-500">{record.scientificName}</p>
-                    </div>
-                    <Badge className={`${statusStyle[record.status]} shadow-none`}>{t(pestStatusKey[record.status])}</Badge>
-                  </div>
-                  <div className="mt-4 flex flex-wrap gap-2">
-                    <Badge variant="outline">{t("pests.zoneLabel", { zone: record.zoneId })}</Badge>
-                    <Badge variant="outline">{record.crop}</Badge>
-                    {record.confidence > MIN_CONFIDENCE_TO_SHOW && (
-                      <Badge className={`${confidenceBandStyle[record.confidenceBand].badge} shadow-none`}>
-                        {t("pests.confidenceSuffix", { value: formatConfidence(record.confidence) })}
-                      </Badge>
-                    )}
-                  </div>
-                  <div className="mt-4 rounded-xl bg-slate-50 p-3 text-center">
-                    <p className="text-sm font-bold text-slate-800">{formatDate(record.timestamp)}</p>
-                    <p className="text-[10px] font-bold uppercase text-slate-500">{t("pests.checked")}</p>
-                  </div>
-                  <p className="mt-4 text-xs font-bold text-slate-600">{t("pests.followUpQuestion")}</p>
-                  <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    {([
-                      [t("pests.improving"), "improving"],
-                      [t("pests.same"), "monitoring"],
-                      [t("pests.increasing"), "increasing"],
-                      [t("pests.resolved"), "resolved"],
-                    ] as [string, PestStatus][]).map(([label, value]) => (
-                      <Button key={value} variant="outline" size="sm" className="h-9 rounded-lg px-2 text-xs" onClick={() => void updateOutcome(record.id, value)}>{label}</Button>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        <div className="mt-6 flex flex-wrap gap-x-5 gap-y-3 border-t border-slate-100 pt-5">{(["high", "moderate", "low", "clear", "recheck", "untested"] as PestZoneState[]).map((state) => <span key={state} className="flex items-center gap-2 text-sm font-medium"><span className={"h-4 w-4 rounded border " + zoneColours[state]} />{text(zoneLabels[state])}</span>)}</div>
+        <p className="mt-5 rounded-2xl bg-slate-50 p-4 text-base leading-7 text-slate-600">{text("Colours describe the latest photo, not the whole zone. Green requires a field check; an uncertain photo stays grey.")}</p>
+        <p className="mt-4 text-sm text-slate-500">{text("Use a fresh photo of the same plants to track change.")}</p>
+      </section>
     </div>
-  )
+
+    <Dialog open={Boolean(viewed)} onOpenChange={(open) => { if (!open) { setViewId(null); window.speechSynthesis?.cancel() } }}>
+      <DialogContent data-no-runtime-translate="true" showCloseButton={false} overlayClassName="pest-zone-overlay" className="pest-zone-dialog flex max-h-[94dvh] w-[96vw] max-w-[96vw] flex-col gap-0 overflow-hidden rounded-3xl bg-[#f7fbf7] p-0 sm:max-w-[1280px]" onCloseAutoFocus={(event) => { if (retaking.current) { event.preventDefault(); retaking.current = false; uploadRef.current?.focus(); uploadRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }) } }}>
+        <DialogHeader className="shrink-0 border-b border-green-100 bg-white px-5 py-4 sm:px-7"><div className="flex items-center justify-between gap-3"><DialogTitle className="text-2xl">{text("Zone")} {viewed?.result.scan.zoneId} · {text("Zone result & plan")}</DialogTitle><DialogClose asChild><Button variant="ghost" className="h-11 w-11 shrink-0 rounded-full p-0" aria-label={text("Close")}><X className="h-6 w-6" /></Button></DialogClose></div><DialogDescription className="text-base">{text("Counts and pressure describe this photo only, not the whole zone.")}</DialogDescription></DialogHeader>
+        <div ref={popupRef} className="min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6">
+          {viewed && <PestZoneResult key={viewed.id} observation={viewed} observations={zoneHistory} confirming={confirming} onConfirmClear={() => void confirmClear()} onRetake={retake} onView={(id) => { setViewId(id); popupRef.current?.scrollTo({ top: 0, behavior: "smooth" }); window.speechSynthesis?.cancel() }} />}
+        </div>
+      </DialogContent>
+    </Dialog>
+  </div>
 }

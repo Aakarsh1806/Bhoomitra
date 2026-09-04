@@ -2,14 +2,14 @@
 
 import React, { createContext, useContext, useState, useEffect } from "react"
 
-export type Language = "en" | "hi" | "mr" | "ta" | "te"
+export type Language = "en" | "hi"
 
 interface LanguageContextType {
   language: Language
   setLanguage: (lang: Language) => void
 }
 
-export const SUPPORTED_LANGUAGES: Language[] = ["en", "hi", "mr", "ta", "te"]
+export const SUPPORTED_LANGUAGES: Language[] = ["en", "hi"]
 
 export const LANGUAGE_STORAGE_KEY = "bhoomitra_language"
 

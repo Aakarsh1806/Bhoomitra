@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import LanguageSelector from "@/components/language-selector"
-import { useLanguage } from "@/lib/language-context"
+import { useLanguage, type Language } from "@/lib/language-context"
 import {
   UserCircle,
   Crown,
@@ -80,9 +80,8 @@ export default function AccountPage() {
         const u: Account = data.user
         setAccount(u)
         setForm({ name: u.name || "", location: u.location || "", email: u.email || "" })
-        if (u.language && typeof u.language === "string") {
-          // keep context in sync with stored preference
-          setLanguage(u.language as any)
+        if (u.language === "en" || u.language === "hi") {
+          setLanguage(u.language as Language)
         }
       })
       .finally(() => setLoading(false))

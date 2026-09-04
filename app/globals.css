@@ -3,6 +3,15 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Zone results must cover the fixed sidebar and the global language control. */
+.pest-zone-overlay {
+  z-index: 240;
+}
+
+.pest-zone-dialog {
+  z-index: 250;
+}
+
 :root {
   --background: oklch(1 0 0);
   /* White background */

@@ -27,7 +27,7 @@ export async function PUT(req: Request) {
     const editable: Record<string, unknown> = {}
     if (typeof body.name === "string" && body.name.trim()) editable.name = body.name.trim()
     if (typeof body.location === "string") editable.location = body.location.trim()
-    if (typeof body.language === "string") editable.language = body.language
+    if (body.language === "en" || body.language === "hi") editable.language = body.language
     // Email is only settable if the account doesn't already have one (phone signups).
     if (typeof body.email === "string" && body.email.trim() && !users[index].email) {
       editable.email = body.email.trim().toLowerCase()

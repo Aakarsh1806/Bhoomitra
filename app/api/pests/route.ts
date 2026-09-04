@@ -1,7 +1,26 @@
 import { NextResponse } from "next/server"
-import { listPestRecords, updatePestRecord } from "@/app/lib/pestRecords"
+import { listPestRecords, PestRecord, updatePestRecord } from "@/app/lib/pestRecords"
 
 export const dynamic = "force-dynamic"
+
+function withoutConfidence(value: Record<string, unknown>) {
+  const copy = { ...value }
+  delete copy.confidence
+  delete copy.confidenceBand
+  return copy
+}
+
+function publicPestRecord(record: PestRecord) {
+  return {
+    ...withoutConfidence(record as unknown as Record<string, unknown>),
+    predictions: (record.predictions || []).map((prediction) =>
+      withoutConfidence(prediction as unknown as Record<string, unknown>)),
+    detections: (record.detections || []).map((detection) =>
+      withoutConfidence(detection as unknown as Record<string, unknown>)),
+    followUps: (record.followUps || []).map((followUp) =>
+      withoutConfidence(followUp as unknown as Record<string, unknown>)),
+  }
+}
 
 export async function GET() {
   const records = listPestRecords()
@@ -11,7 +30,7 @@ export async function GET() {
   const followUpsDue = active.filter((record) => Date.parse(record.followUpDue) <= now)
 
   return NextResponse.json({
-    records: records.slice(0, 50),
+    records: records.slice(0, 50).map(publicPestRecord),
     summary: {
       total: records.length,
       active: active.length,
@@ -42,7 +61,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "The pest observation was not found." }, { status: 404 })
     }
 
-    return NextResponse.json({ success: true, record: updated })
+    return NextResponse.json({ success: true, record: publicPestRecord(updated) })
   } catch (error) {
     console.error("Update pest result failed", error)
     return NextResponse.json({ error: "The pest follow-up could not be saved." }, { status: 500 })
